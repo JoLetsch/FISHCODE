@@ -1,0 +1,1069 @@
+
+;;; setting up global variables
+
+globals
+[
+
+  ;;; Model time
+  day                            ; model day (one tick = one day)
+  day_ongoing                    ; in case the same year should be repeated more than once (repeat_year > 1), day_ongoing is the continuious day to enable continuous agent memory
+  day_ch                         ; model day as character
+  month
+  year
+  year_weeks
+  season
+
+  ;;; Environemntal
+  bottomT_daily                  ; daily bottom temperatures as the average of the daily bottom temperature in all fishing grounds
+  curr_bottomT                   ; bottom temperature at current model day from bottomT_daily
+  all_swh                        ; environmental parameters (bottom temperature (bottomT), bottom salinity (SAL), mixed layer depth (MLD), and depth (elevation)
+  all_swh_colnames               ; column names (first element) from all_swh
+  env_par                        ; list of environmental parameters considered in model (see patches)
+
+  ;;; Economic
+  price_fuel                     ; monthly fuel prices for the whole study period (2012-2018)
+  fuel_year                      ; fuel prices in the current model year
+  curr_price_fuel                ; fuel price at the current model day
+  quotas                         ; all yearly quotas
+  quota_ple                      ; yearly quota for plaice
+  quota_sol                      ; yearly quota for sole
+  quota_nep                      ; yearly quota for nephrops
+  quota_tur_bll                  ; combined yearly quota for bill and turbot
+  quota_cod                      ; yearly quota for cod
+  species_order                  ; list with important species. Among others, used to order catches and prices.
+  res_prices                     ; monthly prices for species (resources)
+  res_prices_colnames            ; column names (first element) of res_prices
+  res_prices_year                ; resource prices in the current model year
+  curr_price_ple                 ; price for plaice in the current month
+  curr_price_sol                 ; price for sole in the current month
+  curr_price_tur                 ; price for turbot in the current month
+  curr_price_bll                 ; price for bill in the current month
+  curr_price_nep                 ; price for nephrops in the current month
+  curr_price_csh                 ; price for common shrimp in the current month
+  curr_price_cod                 ; price for cod in the current month
+  curr_price_all                 ; price for all possible species (also those that are not in species_order) in the current month
+  STECF_costs                    ; fishing costs (all except fuel) per day at sea for different vessel lengths and fishin techniques (from the STECF)
+  STECF_gear_codes               ; file to sort fishing gears to STECF fishing techniques
+  monthly_expanses               ; monthly expanses of agents (fixed to 4000€)
+  steaming_speeds                ; steaming speeds per engine power group and gear
+
+  ;;; Fisheries
+  global_ple                     ; yearly accumulated plaice catches
+  global_sol                     ; yearly accumulated sole catches
+  global_nep                     ; yearly accumulated nephrops catches
+  global_tur_bll                 ; yearly accumulated turbot and bill catches
+  global_csh                     ; yearly accumulated common shrimp catches
+  global_cod                     ; yearly accumulated cod catches
+  global_other                   ; yearly accumulated catches of all other species
+  trip_data                      ; trip data base with multiple entries per trip (one per caught species). Used to model catches.
+  uni_trip_data                  ; trip data base with only one entries per fishing trip. Used to find closest fishing trip (matching environmental variables)
+  trip_data_colnames             ; column names of trip_data and uni_trip_data
+  spatial_fishing_expansion      ; file with values determining the needed number of fished patches per fishing hour and metier
+  weekly_int_tot_GridVes         ; weekly aggregated numbers of international fishing vessels
+  inBetween_steam                ; the amount of steaming time added per trip day. Different for every metier
+  vesDens_thresholds             ; the maximum number of other fishing vessels tolerated in the proximity during fishing trips. Different for every metier
+  CPUE_coefficient               ; the Fixed value = 0.13
+  daily_int_ves_distr_mean       ; Parameter to control the international fishing effort (fixed to 0.5)
+  probability_need_repair        ; the probability of needing a repair after a fishing trip (fixed to 0.2)
+  trip_days_steps                ; a lsit with the possible maximum trip lengths that may be chosen
+
+  
+  ;; Other
+  mem_backwards                  ; the months of present in an agent's memory (fixed to 12)
+    
+  ;;; Consumat
+  ambition_lvl                   ; the thresholds determing whether agents are satisfied or unsatisfied. Fixed value = 0.5
+  tolerance_lvl                  ; the thresholds determing whether agents are certain or uncertain. Fixed value = 0.5
+
+  ;;; Control variables for sensitivity analysis
+  sensitivity_TripDays           ; the number of aggregated fishing trip days per year and metier
+  sensitivity_NumTrips           ; the number of aggregated fishing trips per year and metier
+  sensitivity_lon                ; longitude coordinates of fishing trips per year and metier
+  sensitivity_lat                ; latitude coordinates of fishing trips per year and metier
+
+  ;;; Other
+  init_trip_num                  ; the number of trips in initial memories. Needed to export model outputs
+  temp                           ; temporary value for various processes
+
+  ;;; HELPER VARIABLES AND LISTS
+  ; these varibales or lists dont have any essential function, but are just used to temporally store
+  ; values to increase computation speed
+  uni_trips_OTB-NEP&PLE_spring
+  uni_trips_OTB-PLE_spring
+  uni_trips_PUL-CSH_spring
+  uni_trips_TBB-CSH_spring
+  uni_trips_PUL-PLE&SOL_spring
+  uni_trips_TBB-PLE&SOL_spring
+  uni_trips_PUL-SOL&PLE_spring
+  uni_trips_TBB-SOL&PLE_spring
+  uni_trips_OTB-NEP&PLE_summer
+  uni_trips_OTB-PLE_summer
+  uni_trips_PUL-CSH_summer
+  uni_trips_TBB-CSH_summer
+  uni_trips_PUL-PLE&SOL_summer
+  uni_trips_TBB-PLE&SOL_summer
+  uni_trips_PUL-SOL&PLE_summer
+  uni_trips_TBB-SOL&PLE_summer
+  uni_trips_OTB-NEP&PLE_fall
+  uni_trips_OTB-PLE_fall
+  uni_trips_PUL-CSH_fall
+  uni_trips_TBB-CSH_fall
+  uni_trips_PUL-PLE&SOL_fall
+  uni_trips_TBB-PLE&SOL_fall
+  uni_trips_PUL-SOL&PLE_fall
+  uni_trips_TBB-SOL&PLE_fall
+   uni_trips_OTB-NEP&PLE_winter
+  uni_trips_OTB-PLE_winter
+  uni_trips_PUL-CSH_winter
+  uni_trips_TBB-CSH_winter
+  uni_trips_PUL-PLE&SOL_winter
+  uni_trips_TBB-PLE&SOL_winter
+  uni_trips_PUL-SOL&PLE_winter
+  uni_trips_TBB-SOL&PLE_winter
+  swh_OTB-NEP&PLE
+  swh_OTB-PLE
+  swh_PUL-CSH
+  swh_TBB-CSH
+  swh_PUL-PLE&SOL
+  swh_TBB-PLE&SOL
+  swh_PUL-SOL&PLE
+  swh_TBB-SOL&PLE
+  swh_year_OTB-NEP&PLE
+  swh_year_OTB-PLE
+  swh_year_PUL-CSH
+  swh_year_TBB-CSH
+  swh_year_PUL-PLE&SOL
+  swh_year_TBB-PLE&SOL
+  swh_year_PUL-SOL&PLE
+  swh_year_TBB-SOL&PLE
+  price_ple
+  price_sol
+  price_bll
+  price_tur
+  price_cod
+  price_nep
+  price_csh
+
+  ;;; PARRAMETERS DEFINED AT THE MODEL INTERFACE
+
+  ;; Text inputs
+
+  ; path_input_folder
+  ; path_output_folder
+
+  ;; Switches for visual output
+
+  ; show_depletion
+  ; show_ves_distr
+
+  ;; Sliders, switches and text inputs to manipulate model environment (experiments)
+
+  ; PUL?
+  ; Scenario?
+  ; perceiving_error
+  ; CPUE_uncertainty_multiplier
+  ; fish_depletion
+  ; fish_recovery
+
+]
+
+;;; setting up breeds
+
+breed [vessels vessel]
+breed [ports port]
+breed [nodes node]
+
+;;; State variables
+
+vessels-own
+[
+
+ ;;; Technical vessel characteristics
+  VE_REF                         ; vessel reference number
+  loa                            ; Vessel length [m] (length over all)
+  tonnage                        ; Vessel volumn in [t]
+  max_catch                      ; maximum vessel catch [kg]. Depends on tonnage
+  engine_kw                      ; vessel engine power [kw]
+  engine_kw_step                 ; vessel engine power group
+  swh_thresh                     ; threshold for wave heights [m]. Depends on vessel length
+
+  ;;; Other
+  fleet                          ; to what of the three fleets does the vessel belong
+  list_peers                     ; vessel references of current peers in close social network
+  list_ext_peers                 ; vessel references of current peers in extended social network
+  producer_organisation          ; affiliation to a producer organization
+  savings                        ; current savings [€]
+  status                         ; fishing or in port
+
+
+  ;;; Fishing
+  avail_gears                    ; available fishing gears
+  default_metier                 ; default metier option
+  current_port                   ; current port to land catches
+  max_trip_days                  ; fixed maximum trip days
+  curr_trip_length               ; the trip length of the current trip
+  chance_trip_length             ; probabilities for a fishing trip lasting a certain lengths (limited by max_trip_days)
+  chance_weekend                 ; probability to engage in fishing trip during the weekend
+  weekend_trip                   ; whether the vessel would go out on a weekend or not
+  chance_weekly                  ; the monthly probabiltiy to be active in a week
+  active_week                    ; saving whether its an active or inactive week
+  need_repair                    ; vessel needs repair for the next two days (true/false)
+  quota_quarter_sol              ; individual quarterly vessel quota for sole
+  quota_year_nep                 ; individual yearly vessel quota for nephrops
+  quota_year_ple                 ; individual yearly vessel quota for plaice
+  quota_year_cod                 ; individual yearly vessel quota for cod
+  fish_licence                   ; available licences for target species. Needed for species with quotas.
+  deliberate_options             ; the pool of metier option for when deliberation is chosen.
+  NoGo_FishGros                  ; list of Fishing grounds (metiers) that are impossible for this vessel, because of spatial restrictions
+  daily_fixed_costs              ; daily rate of fixed costs (depends on vessel size)
+  
+  ;;; Fishing trip
+  trip_days                      ; number of days spent on a fishing trip
+  target_FishGro                 ; chosen metier (or fisning ground; FishGro)
+  target_patch                   ; initial center patch of fishing ground
+
+  ;;; Memory (lits extended for every fishing trip)
+  list_catch                     ; catches for all species in species_order
+  list_primary_spec              ; most abundant species according to weight in catches
+  list_eur                       ; revenues for all species in species_order [€]
+  list_fuel                      ; used fuel [l]
+  list_profit                    ; profit for whole fishing trip [€]
+  list_profit_day                ; profit per day [€]
+  list_pred_profit_day           ; predicted profit per fishing trip day [€]
+  list_depreciations             ; depreciations / consumtion of fixed capital [€]
+  list_FishGro                   ; chosen metier / fishing ground (short: FishGro)
+  list_gears                     ; saves fishing gear
+  list_trip_days                 ; days spent on fishing trip
+  list_first_day                 ; first day of trip
+  list_last_day                  ; last day of trip
+  list_perc_bT_trip              ; perceived bottom temperature [°C]
+  list_matched_ID                ; ID from fishing trip (from trip data base) that was used to model catches
+  list_uncertainty               ; euclidean distance from current model environment to matched fishing trip. Used to randomly alter CPUEs
+  list_landing_port              ; port in which catches were landed
+  list_transfer                  ; did the vessel transfer to a new landing port? (true/false)
+  list_center_ID                 ; ID of center patch
+  list_center_agent              ; center patch as agentset (for faster computation)
+  list_num_searches              ; number of times, the vessels searched for a new center patch due to high densities of other fishing vessels
+  list_num_patches               ; number of fished patches
+  list_steam_time                ; steaming time [h]
+  list_fish_time                 ; fishing time [h]
+  list_trip_patch_ids            ; patch IDs of all fished patches
+  list_mean_depl_coeff           ; average of depletion coefficients of all fished patches. Used to reduce CPUEs.
+  consumat_strategy              ; one of the four: repetition, imitation, deliberation, inquiring
+
+  ;;; Memory (lists extended every model day)
+  list_perc_bottomT              ; perceived bottom temperature [°C]
+  list_decision                  ; Either the fishing ground (metier) that is currently fished or the reason why vessel stayed in port
+  list_savings                   ; The amount of savings [€]
+  overall_sat                    ; overall satisfaction
+  overall_unc                    ; overall uncertainty
+  existence_sat                  ; existance satisfaction
+  social_sat                     ; social satisfaction
+  personal_sat_spec              ; personal satisfacion related to primary species caught
+  personal_sat_gear              ; personal satisfacion related to fishing gears used
+  personal_sat                   ; personal satisfaction
+  existence_unc                  ; existence uncertainty
+  social_unc_spec                ; social uncertainty related to primary species caught
+  social_unc_gear                ; social uncertainty related to used fishing gears
+  social_unc                     ; social uncertainty
+  status_sat                     ; satisfied or unsatisfied
+  status_unc                     ; certain or uncertain
+
+  ;;; Calibrated values per fleet
+  w_exist_sat                    ; weighting of the existence satisfaction
+  w_pers_sat                     ; weighting of the personal satisfaction
+  w_soc_sat                      ; weighting of the social satisfaction
+  w_exist_unc                    ; weighting of the existence uncertainty
+  w_soc_unc                      ; weighting of the social uncertainty
+  target_savings                 ; aspired savings
+
+  ;;; Perceived prices
+  perc_price_ple                 ; perceived plaice price [€/kg]
+  perc_price_sol                 ; perceived sole price [€/kg]
+  perc_price_nep                 ; perceived nephrops price [€/kg]
+  perc_price_tur                 ; perceived turbot price [€/kg]
+  perc_price_bll                 ; perceived bill price [€/kg]
+  perc_price_csh                 ; perceived common shrimp price [€/kg]
+  perc_price_cod                 ; perceived cod price [€/kg]
+  perc_price_fuel                ; perceived fuel price [€/l]
+
+  ;;; HELPER PARAMETERS
+  ; These paramaters do not fullfil any essential function, but store values temporaly to increase computation speed
+  last_trip_patches
+  curr_peers
+  curr_ext_peers
+  list_tripDays_delMem
+  
+  ; Helper list to calculate sataisfactions and uncertainties
+  list_meanProfit_peers          ; mean profits of peers. Used to calculate social satisfaction
+  list_gears_peers               ; gears used by peers. Used to calculate social uncertainty
+  list_primeSpec_peers           ; primary species caught by peers. Used to calculate social uncertainty
+  common_gears                   ; gears of list_gears with a frequency > 0.2. Used to calculate personal satisfaction
+  common_prime_spec              ; gears of list_gears with a frequency > 0.2. Used to calculate personal satisfaction
+
+]
+
+ports-own
+[
+  port_name                       ; real name of port
+  lon                             ; longitude [°]
+  lat                             ; latitude  [°]
+  corx                            ; x-coordinate in Netlogo
+  cory                            ; y-coordinate in Netlogo
+]
+
+patches-own
+[
+
+  dummy_ID                       ; patch ID
+  FishGro                        ; affiliation to fishing ground
+  int_ves_num_allWeeks           ; list with weekly number of international fishing vessels of the entire year
+  int_ves_num_weekly             ; current weekly number of international fishing vessels
+  int_ves_num_daily              ; current daily number of international fishing vessels
+  ger_ves_num                    ; number of german fishing vessels on the current model day
+  int_ves_displace_coeff         ; coefficient used to calculate displacement of international fishing vessels from areas closed to fishing
+  depletion_coeff                ; coeficient representing local depletion and used to reduce CPUEs
+  passable?                      ; is the patch passable?
+  fishable?                      ; is patch suitable for fishing?
+  spat_restr                     ; spatial restrictions. Different from 'fishable?' because some restrictions only apply for certain type of vessels (e.g. plaice box for vessels with engine kW > 221)
+  NWS_bottomT_allWeeks           ; list with bottom temperatures of the entire year
+  NWS_MLD_allWeeks               ; list with mixed layer depths of the entire year
+  NWS_SAL_allWeeks               ; list with bottom salinities of the entire year
+  NWS_bottomT                    ; current weekly bottom temperature
+  NWS_MLD                        ; current weekly mixed layer depth
+  NWS_SAL                        ; current weekly bottom salinity
+  elevation                      ; static bathymetry (depth)
+  ;visual_val                     ; can be filled with temporary values that shall be visualized
+
+]
+
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;       SETUP            ;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+to setup
+
+  ;;; clear
+  clear-all
+  reset-ticks
+  file-close-all
+
+  ;;; if no Stochasticity is wanted determine random seed for reproducibility
+  if( Stochasticity? = false )[ random-seed 42 ]
+
+  ;;; set up date
+  ; alter date to year code if base year or a scenario was chosen. Base year referes to year 3000.
+  ifelse( Scenario? != "none" )[
+    set day time:create "2999-12-31" set model_end_date "3000-12-31"
+    set day_ongoing time:create "2999-12-31"
+  ][
+    file-open (word path_input_folder "model_start_date.txt")
+    set day time:create file-read-line
+    file-close
+    set day time:plus day -1 "day"
+    set day_ongoing day
+  ]
+  set day_ch []
+  set day_ch lput time:show day "yyyy-MM-dd" day_ch
+  set month time:show day "yyyy-MM"
+  set year time:show day "yyyy"
+  
+  ;;; set fixed global parameters
+  set monthly_expanses 4000                  ; monthly amount of money agents spend
+  set probability_need_repair .2             ; probability a vesssel needs repair (allways two days) after a fishing trip
+  set daily_int_ves_distr_mean .5            ; mean of the random relative distribution of international fishing vessels
+  set mem_backwards 12                       ; past months included in agents' memories
+
+  ;;; get calibrated parameter values
+  if( read_calibrated_parameters? )[
+    read.calibrated.parameters (word path_input_folder "calibrated_parameters.csv")
+  ]
+
+  ;;; read shapefiles
+  gis:load-coordinate-system (word path_input_folder "Grid_and_FishGos/dummy_ID.prj")
+  let dummy_shp_ID gis:load-dataset (word path_input_folder "Grid_and_FishGos/dummy_ID.asc")
+  let land_shp gis:load-dataset (word path_input_folder "SNS_countries/sns_count.shp")
+  let ports_shp gis:load-dataset (word path_input_folder "SNS_ports/sns_ports.shp")
+
+  ;;; change world size and create GIS envelope
+  resize-world 0 gis:width-of dummy_shp_ID - 1 0 gis:height-of dummy_shp_ID - 1
+  ask patches [ set pcolor white ]
+  gis:set-world-envelope-ds ( gis:envelope-of dummy_shp_ID )
+
+  ;;; draw land
+  gis:set-drawing-color green
+  gis:fill land_shp 1
+
+  ;;; set up patch variables
+  ask patches [
+    set FishGro []
+    set depletion_coeff 1
+    set ger_ves_num 0
+    set passable? true
+    set fishable? false
+  ]
+
+
+  ;;; fill in patch ID variables
+  file-open (word path_input_folder "Grid_and_FishGos/dummy_ID.asc")
+  repeat 6 [let header file-read-line] ; skip header
+  set temp []
+  while [file-at-end? = false][ set temp lput file-read temp ]
+  file-close
+  (foreach sort patches temp
+    [ [a b] -> ask a [ set dummy_ID b ] ] )
+  
+  ;;; fill in spatial association per metier per patch
+  file-open (word path_input_folder "Grid_and_FishGos/dummy_FishGro.asc")
+  repeat 6 [let header file-read-line] ; skip header
+  set temp []
+  while [file-at-end? = false][ set temp lput file-read temp ]
+  file-close
+  (foreach sort patches temp
+    [ [a b] -> ask a [ set FishGro b ] ] )
+  
+  ;;; translate metier information from numbers to characters
+  let metier_trans but-first csv:from-file (word path_input_folder "Grid_and_FishGos/metier_trans.csv")
+  foreach metier_trans [
+    a -> ask patches with [ FishGro = item 1 a ][ set FishGro item 0 a ]
+  ]
+  
+  ;;; read env data
+  
+  ; fill in spatial bathymetry (elevation)
+  file-open (word path_input_folder "env_dat/env_elevation.asc")
+  repeat 6 [let header file-read-line] ; skip header
+  set temp []
+  while [file-at-end? = false][ set temp lput file-read temp ]
+  file-close
+  (foreach sort patches temp [ [a b] -> ask a [ set elevation b ] ] )
+  set env_par ["NWS_bottomT" "NWS_SAL" "NWS_MLD" "elevation"]                         ; control variable for the order of environmental parameters
+  
+  ; averaged wave height data for forecast of weather (North western shelf data)
+  set all_swh csv:from-file (word path_input_folder "all_met_daily_swh.csv")
+  set all_swh_colnames first all_swh
+  set all_swh but-first all_swh
+  
+  ;;; alter passable? state of patches
+  
+  ; all patches overlapping with land are impassable
+  ask patches gis:intersecting land_shp [ set passable? false ]
+  
+  ; make patches overlapping with ports, and their  neighbor patches, passable (since they are close to land they are made impassable)
+  ask patches gis:intersecting ports_shp [ ask patches in-radius 5 [ set passable? true ] ]
+
+ ; allow passage in some cells that are close to land (especially between barrier islands)
+  ask patches with [ pxcor = 92 and pycor = 43 ][ set passable? true ]
+  ask patches with [ pxcor = 93 and pycor = 43 ][ set passable? true ]
+  ask patches with [ pxcor = 94 and pycor = 43 ][ set passable? true ]
+  ask patches with [ pxcor = 95 and pycor = 43 ][ set passable? true ]
+  ask patches with [ pxcor = 94 and pycor = 44 ][ set passable? true ]
+  ask patches with [ pxcor = 95 and pycor = 44 ][ set passable? true ]
+  ask patches with [ pxcor = 47 and pycor = 4 ][ set passable? true ]
+  ask patches with [ pxcor = 48 and pycor = 4 ][ set passable? true ]
+  ask patches with [ pxcor = 51 and pycor = 3 ][ set passable? true ]
+  ask patches with [ pxcor = 149 and pycor = 56 ][ set passable? true ]
+
+  ; restrict passage to some cells that are inshore (barrier islands & helgoland)
+  ask patches with [ pxcor = 150 and pycor = 55 ][ set passable? false ]
+  ask patches with [ pxcor = 122 and pycor = 50 ][ set passable? false ]
+  ask patches with [ pxcor = 123 and pycor = 50 ][ set passable? false ]
+  ask patches with [ pxcor = 124 and pycor = 50 ][ set passable? false ]
+  ask patches with [ pxcor = 125 and pycor = 50 ][ set passable? false ]
+  ask patches with [ pxcor = 129 and pycor = 51 ][ set passable? false ]
+  ask patches with [ pxcor = 130 and pycor = 51 ][ set passable? false ]
+  ask patches with [ pxcor = 131 and pycor = 51 ][ set passable? false ]
+  ask patches with [ pxcor = 132 and pycor = 51 ][ set passable? false ]
+  ask patches with [ pxcor = 134 and pycor = 51 ][ set passable? false ]
+  ask patches with [ pxcor = 135 and pycor = 51 ][ set passable? false ]
+  ask patches with [ pxcor = 136 and pycor = 51 ][ set passable? false ]
+  ask patches with [ pxcor = 143 and pycor = 50 ][ set passable? false ]
+  ask patches with [ pxcor = 144 and pycor = 50 ][ set passable? false ]
+  ask patches with [ pxcor = 156 and pycor = 58 ][ set passable? false ]
+  ask patches with [ pxcor = 70 and pycor = 37 ][ set passable? false ]
+  ask patches with [ pxcor = 71 and pycor = 37 ][ set passable? false ]
+  ask patches with [ pxcor = 69 and pycor = 36 ][ set passable? false ]
+  ask patches with [ pxcor = 69 and pycor = 36 ][ set passable? false ]
+  ask patches with [ pxcor = 68 and pycor = 35 ][ set passable? false ]
+  ask patches with [ pxcor = 69 and pycor = 35 ][ set passable? false ]
+  ask patches with [ pxcor = 99 and pycor = 45 ][ set passable? false ]
+  ask patches with [ pxcor = 100 and pycor = 45 ][ set passable? false ]
+  ask patches with [ pxcor = 101 and pycor = 45 ][ set passable? false ]
+  ask patches with [ pxcor = 102 and pycor = 45 ][ set passable? false ]
+  ask patches with [ pxcor = 103 and pycor = 45 ][ set passable? false ]
+
+  ;;; all patches that are related to any metier are fishable
+  ask patches with [ FishGro != "none" ] [ set fishable? true ]
+  
+  ;;; all patches that are not passable are also not fishable
+  ask patches with [ passable? = false ] [ set fishable? false ]
+
+  ;;; set fixed global variables
+  set species_order ["SOL" "PLE" "TUR" "BLL" "NEP" "CSH" "COD" "Other" ]       ; species order
+  set CPUE_coefficient 0.13                                                    ; set up CPUE coefficient determining relative CPUE change between engine power groups
+  set ambition_lvl 0.5                                                         ; ambition level = threshold for overall satisfacions
+  set tolerance_lvl 0.5                                                        ; tolerance level = threshold for overall uncertainties
+
+  ;;; read STECF costs and gear codes and change years to characters
+  set STECF_costs csv:from-file (word path_input_folder "modelled_costs.csv")
+  set STECF_costs map [ a -> replace-item 1 a (word item 1 a) ] STECF_costs
+  set STECF_gear_codes csv:from-file (word path_input_folder "STECF_gear_codes.csv")
+
+  ;;; read file with information for inBetween steam times
+  set inBetween_steam csv:from-file (word path_input_folder "inBetween_steam_day.csv")
+
+  ;;; read coefficients for spatial fishing expansion
+  set spatial_fishing_expansion csv:from-file (word path_input_folder "spatial_fishing_expansion.csv")
+
+  ;;; read trip data base
+  set trip_data csv:from-file (word path_input_folder "trip_data.csv")
+  set trip_data_colnames first trip_data
+  set trip_data but-first trip_data
+  set trip_data map [ a -> map [ i -> item (position a trip_data_colnames) i ] trip_data ] trip_data_colnames   ; change to one list per column for faster processing
+
+  ;;; read uni trip data base
+  set uni_trip_data csv:from-file (word path_input_folder "uni_trip_data.csv")
+  set uni_trip_data but-first uni_trip_data
+  set uni_trip_data map [ a -> map [ i -> item (position a trip_data_colnames) i ] uni_trip_data ] trip_data_colnames   ; change to one list per column for faster processing
+  
+  ; bottom T (north western shelf data)
+  set bottomT_daily but-first csv:from-file (word path_input_folder "bottomT_daily.csv")
+  
+  ;;; read economic data
+
+  ; resource prices
+  set res_prices csv:from-file (word path_input_folder "resource_prices.csv")
+  set res_prices_colnames first res_prices
+  set res_prices but-first res_prices
+
+  ; marine fuel price
+  set price_fuel but-first csv:from-file (word path_input_folder "fuel_prices.csv")
+
+  ; read file with weekly numbers of international vessels per Grids
+  set weekly_int_tot_GridVes but-first csv:from-file (word path_input_folder "weekly_totVes_num_fished.csv")
+
+  ; read quotas
+  set quotas csv:from-file (word path_input_folder "quotas.csv")
+  
+  ; read steaming speeds
+  set steaming_speeds csv:from-file (word path_input_folder "steaming_speeds.csv")
+  
+  ;;; fill helper variables for faster computation
+
+   ; trip lists for each metier for matching 
+  let w_pos position "metier" trip_data_colnames
+  let uni_trips_OTB-NEP&PLE map [ a -> map [ b -> item b a ] (all.position item w_pos uni_trip_data "OTB - NEP&PLE") ] uni_trip_data
+  let uni_trips_OTB-PLE map [ a -> map [ b -> item b a ] (all.position item w_pos uni_trip_data "OTB - PLE") ] uni_trip_data
+  let uni_trips_PUL-CSH map [ a -> map [ b -> item b a ] (all.position item w_pos uni_trip_data "PUL - CSH") ] uni_trip_data
+  let uni_trips_TBB-CSH map [ a -> map [ b -> item b a ] (all.position item w_pos uni_trip_data "TBB - CSH") ] uni_trip_data
+  let uni_trips_PUL-PLE&SOL map [ a -> map [ b -> item b a ] (all.position item w_pos uni_trip_data "PUL - PLE&SOL") ] uni_trip_data
+  let uni_trips_TBB-PLE&SOL map [ a -> map [ b -> item b a ] (all.position item w_pos uni_trip_data "TBB - PLE&SOL") ] uni_trip_data
+  let uni_trips_PUL-SOL&PLE map [ a -> map [ b -> item b a ] (all.position item w_pos uni_trip_data "PUL - SOL&PLE") ] uni_trip_data
+  let uni_trips_TBB-SOL&PLE map [ a -> map [ b -> item b a ] (all.position item w_pos uni_trip_data "TBB - SOL&PLE") ] uni_trip_data
+  
+  ; ... per season
+  set w_pos position "season" trip_data_colnames
+  
+  ; Spring
+  set uni_trips_OTB-NEP&PLE_spring map [ a -> map [ b -> item b a ] (all.position item w_pos uni_trips_OTB-NEP&PLE "Spring") ] uni_trips_OTB-NEP&PLE
+  set uni_trips_OTB-PLE_spring map [ a -> map [ b -> item b a ] (all.position item w_pos uni_trips_OTB-PLE "Spring") ] uni_trips_OTB-PLE
+  set uni_trips_PUL-CSH_spring map [ a -> map [ b -> item b a ] (all.position item w_pos uni_trips_PUL-CSH "Spring") ] uni_trips_PUL-CSH
+  set uni_trips_TBB-CSH_spring map [ a -> map [ b -> item b a ] (all.position item w_pos uni_trips_TBB-CSH "Spring") ] uni_trips_TBB-CSH
+  set uni_trips_PUL-PLE&SOL_spring map [ a -> map [ b -> item b a ] (all.position item w_pos uni_trips_PUL-PLE&SOL "Spring") ] uni_trips_PUL-PLE&SOL
+  set uni_trips_TBB-PLE&SOL_spring map [ a -> map [ b -> item b a ] (all.position item w_pos uni_trips_TBB-PLE&SOL "Spring") ] uni_trips_TBB-PLE&SOL
+  set uni_trips_PUL-SOL&PLE_spring map [ a -> map [ b -> item b a ] (all.position item w_pos uni_trips_PUL-SOL&PLE "Spring") ] uni_trips_PUL-SOL&PLE
+  set uni_trips_TBB-SOL&PLE_spring map [ a -> map [ b -> item b a ] (all.position item w_pos uni_trips_TBB-SOL&PLE "Spring") ] uni_trips_TBB-SOL&PLE
+  
+  ; Summer
+  set uni_trips_OTB-NEP&PLE_summer map [ a -> map [ b -> item b a ] (all.position item w_pos uni_trips_OTB-NEP&PLE "Summer") ] uni_trips_OTB-NEP&PLE
+  set uni_trips_OTB-PLE_summer map [ a -> map [ b -> item b a ] (all.position item w_pos uni_trips_OTB-PLE "Summer") ] uni_trips_OTB-PLE
+  set uni_trips_PUL-CSH_summer map [ a -> map [ b -> item b a ] (all.position item w_pos uni_trips_PUL-CSH "Summer") ] uni_trips_PUL-CSH
+  set uni_trips_TBB-CSH_summer map [ a -> map [ b -> item b a ] (all.position item w_pos uni_trips_TBB-CSH "Summer") ] uni_trips_TBB-CSH
+  set uni_trips_PUL-PLE&SOL_summer map [ a -> map [ b -> item b a ] (all.position item w_pos uni_trips_PUL-PLE&SOL "Summer") ] uni_trips_PUL-PLE&SOL
+  set uni_trips_TBB-PLE&SOL_summer map [ a -> map [ b -> item b a ] (all.position item w_pos uni_trips_TBB-PLE&SOL "Summer") ] uni_trips_TBB-PLE&SOL
+  set uni_trips_PUL-SOL&PLE_summer map [ a -> map [ b -> item b a ] (all.position item w_pos uni_trips_PUL-SOL&PLE "Summer") ] uni_trips_PUL-SOL&PLE
+  set uni_trips_TBB-SOL&PLE_summer map [ a -> map [ b -> item b a ] (all.position item w_pos uni_trips_TBB-SOL&PLE "Summer") ] uni_trips_TBB-SOL&PLE
+  
+  ; Fall
+  set uni_trips_OTB-NEP&PLE_fall map [ a -> map [ b -> item b a ] (all.position item w_pos uni_trips_OTB-NEP&PLE "Fall") ] uni_trips_OTB-NEP&PLE
+  set uni_trips_OTB-PLE_fall map [ a -> map [ b -> item b a ] (all.position item w_pos uni_trips_OTB-PLE "Fall") ] uni_trips_OTB-PLE
+  set uni_trips_PUL-CSH_fall map [ a -> map [ b -> item b a ] (all.position item w_pos uni_trips_PUL-CSH "Fall") ] uni_trips_PUL-CSH
+  set uni_trips_TBB-CSH_fall map [ a -> map [ b -> item b a ] (all.position item w_pos uni_trips_TBB-CSH "Fall") ] uni_trips_TBB-CSH
+  set uni_trips_PUL-PLE&SOL_fall map [ a -> map [ b -> item b a ] (all.position item w_pos uni_trips_PUL-PLE&SOL "Fall") ] uni_trips_PUL-PLE&SOL
+  set uni_trips_TBB-PLE&SOL_fall map [ a -> map [ b -> item b a ] (all.position item w_pos uni_trips_TBB-PLE&SOL "Fall") ] uni_trips_TBB-PLE&SOL
+  set uni_trips_PUL-SOL&PLE_fall map [ a -> map [ b -> item b a ] (all.position item w_pos uni_trips_PUL-SOL&PLE "Fall") ] uni_trips_PUL-SOL&PLE
+  set uni_trips_TBB-SOL&PLE_fall map [ a -> map [ b -> item b a ] (all.position item w_pos uni_trips_TBB-SOL&PLE "Fall") ] uni_trips_TBB-SOL&PLE
+  
+  ; Winter
+  set uni_trips_OTB-NEP&PLE_winter map [ a -> map [ b -> item b a ] (all.position item w_pos uni_trips_OTB-NEP&PLE "Winter") ] uni_trips_OTB-NEP&PLE
+  set uni_trips_OTB-PLE_winter map [ a -> map [ b -> item b a ] (all.position item w_pos uni_trips_OTB-PLE "Winter") ] uni_trips_OTB-PLE
+  set uni_trips_PUL-CSH_winter map [ a -> map [ b -> item b a ] (all.position item w_pos uni_trips_PUL-CSH "Winter") ] uni_trips_PUL-CSH
+  set uni_trips_TBB-CSH_winter map [ a -> map [ b -> item b a ] (all.position item w_pos uni_trips_TBB-CSH "Winter") ] uni_trips_TBB-CSH
+  set uni_trips_PUL-PLE&SOL_winter map [ a -> map [ b -> item b a ] (all.position item w_pos uni_trips_PUL-PLE&SOL "Winter") ] uni_trips_PUL-PLE&SOL
+  set uni_trips_TBB-PLE&SOL_winter map [ a -> map [ b -> item b a ] (all.position item w_pos uni_trips_TBB-PLE&SOL "Winter") ] uni_trips_TBB-PLE&SOL
+  set uni_trips_PUL-SOL&PLE_winter map [ a -> map [ b -> item b a ] (all.position item w_pos uni_trips_PUL-SOL&PLE "Winter") ] uni_trips_PUL-SOL&PLE
+  set uni_trips_TBB-SOL&PLE_winter map [ a -> map [ b -> item b a ] (all.position item w_pos uni_trips_TBB-SOL&PLE "Winter") ] uni_trips_TBB-SOL&PLE
+  
+  ; metier lists for wave heights in fishing grounds
+  set w_pos position "metier" all_swh_colnames
+  set swh_OTB-NEP&PLE filter [ i -> item w_pos i = "OTB - NEP&PLE" ] all_swh
+  set swh_OTB-PLE filter [ i -> item w_pos i = "OTB - PLE" ] all_swh
+  set swh_PUL-CSH filter [ i -> item w_pos i = "PUL - CSH" ] all_swh
+  set swh_TBB-CSH filter [ i -> item w_pos i = "TBB - CSH" ] all_swh
+  set swh_PUL-PLE&SOL filter [ i -> item w_pos i = "PUL - PLE&SOL" ] all_swh
+  set swh_TBB-PLE&SOL filter [ i -> item w_pos i = "TBB - PLE&SOL" ] all_swh
+  set swh_PUL-SOL&PLE filter [ i -> item w_pos i = "PUL - SOL&PLE" ] all_swh
+  set swh_TBB-SOL&PLE filter [ i -> item w_pos i = "TBB - SOL&PLE" ] all_swh
+
+  ;;; create ports
+
+  let port_info csv:from-file (word path_input_folder "port_data.csv")
+  let num_ports (length(port_info) - 1)
+  create-ports num_ports
+  [
+    set shape "circle"
+    set size 1
+    set color black
+
+    ; set state variables
+    set lon item (position "lon" item 0 port_info) item 1 port_info
+    set lat item (position "lat" item 0 port_info) item 1 port_info
+    set port_name item (position "harbour" item 0 port_info) item 1 port_info
+    set port_info remove-item 1 port_info     ; remove info of one port, so that the next port gets info from next port
+
+    ; find intersecting patch and move port there
+    let shp gis:find-one-feature ports_shp "harbour" port_name
+    let int_patch patches gis:intersecting shp
+
+    set corx [ pxcor ] of int_patch
+    set cory [ pycor ] of int_patch
+    setxy first corx first cory
+
+  ]
+
+
+  ;;; create dummy state variable lists for vessels and set some first fixed state variables
+
+  let ves_info csv:from-file (word path_input_folder "ves_data.csv")
+  let num_vessels (length(ves_info) - 1)
+  create-vessels num_vessels
+  [
+    set color yellow
+    set status "in-port"
+    set size 8
+
+    ; creat dummy soc net lists
+    set list_peers []
+    set list_ext_peers []
+
+    ; create dummy memory lists
+    set list_catch []
+    set list_eur []
+    set list_fuel []
+    set list_FishGro []
+    set list_trip_days []
+    set list_first_day []
+    set list_last_day []
+    set list_profit []
+    set list_profit_day []
+    set list_depreciations []
+    set list_primary_spec []
+    set list_perc_bottomT []
+    set list_perc_bT_trip []
+    set list_matched_ID []
+    set list_decision []
+    set list_center_ID []
+    set list_center_agent []
+    set list_num_searches []
+    set list_num_patches []
+    set list_steam_time []
+    set list_fish_time []
+    set list_uncertainty []
+    set list_landing_port []
+    set list_transfer []
+    set list_trip_patch_ids []
+    set list_mean_depl_coeff []
+
+    ; create initial consumat lists
+    set existence_sat []
+    set social_sat []
+    set personal_sat_spec []
+    set personal_sat_gear []
+    set personal_sat []
+    set existence_unc []
+    set social_unc []
+    set social_unc_spec []
+    set social_unc_gear []
+    set overall_sat []
+    set overall_unc []
+    set status_sat []
+    set status_unc []
+    set consumat_strategy []
+    set list_savings []
+    set list_gears []
+    set list_meanProfit_peers []
+    set list_gears_peers []
+    set list_primeSpec_peers []
+
+    ; other dummy lists
+    set fish_licence []
+    set list_tripDays_delMem []
+    set NoGo_FishGros []
+
+    ; set need_repair to false, so that vessels are ok in the beginning
+    set need_repair false
+
+    ; prediction lists
+    set list_pred_profit_day []
+
+    ; deliberate options (hardcoded)
+    set deliberate_options [ "OTB - NEP&PLE" "OTB - PLE" "PUL - CSH" "PUL - SOL&PLE" "PUL - PLE&SOL" "TBB - CSH" "TBB - SOL&PLE" "TBB - PLE&SOL" ]
+
+    ; if no PUL gear is allowed, remove from deliberate options
+    if( PUL? = false )[ set deliberate_options [ "OTB - NEP&PLE" "OTB - PLE" "TBB - CSH" "TBB - SOL&PLE" "TBB - PLE&SOL" ] ]
+
+    ;; set fixed vessel state variables
+
+    set VE_REF item (position "VE_REF" item 0 ves_info) item 1 ves_info
+    set loa item (position "LOA" item 0 ves_info) item 1 ves_info
+    set tonnage item (position "tonnage" item 0 ves_info) item 1 ves_info
+    set engine_kw_step item (position "engine_kw_steps" item 0 ves_info) item 1 ves_info
+    set engine_kw item (position "engine_kw" item 0 ves_info) item 1 ves_info
+    set max_catch item (position "max_kg" item 0 ves_info) item 1 ves_info
+    set producer_organisation item (position "ERZORG_name" item 0 ves_info) item 1 ves_info
+    set max_trip_days item (position "max_trip_days" item 0 ves_info) item 1 ves_info
+    set chance_weekend item (position "perc_WE_trips" item 0 ves_info) item 1 ves_info
+    set chance_weekly (list
+      item (position "chance_week.1" item 0 ves_info) item 1 ves_info
+      item (position "chance_week.2" item 0 ves_info) item 1 ves_info
+      item (position "chance_week.3" item 0 ves_info) item 1 ves_info
+      item (position "chance_week.4" item 0 ves_info) item 1 ves_info
+      item (position "chance_week.5" item 0 ves_info) item 1 ves_info
+      item (position "chance_week.6" item 0 ves_info) item 1 ves_info
+      item (position "chance_week.7" item 0 ves_info) item 1 ves_info
+      item (position "chance_week.8" item 0 ves_info) item 1 ves_info
+      item (position "chance_week.9" item 0 ves_info) item 1 ves_info
+      item (position "chance_week.10" item 0 ves_info) item 1 ves_info
+      item (position "chance_week.11" item 0 ves_info) item 1 ves_info
+      item (position "chance_week.12" item 0 ves_info) item 1 ves_info
+    )
+    set chance_trip_length (list
+      precision ( item (position "chance.0.5" item 0 ves_info) item 1 ves_info ) 2
+      precision ( item (position "chance.1" item 0 ves_info) item 1 ves_info ) 2
+      precision ( item (position "chance.1.5" item 0 ves_info) item 1 ves_info ) 2
+      precision ( item (position "chance.2" item 0 ves_info) item 1 ves_info ) 2
+      precision ( item (position "chance.2.5" item 0 ves_info) item 1 ves_info ) 2
+      precision ( item (position "chance.3" item 0 ves_info) item 1 ves_info ) 2
+      precision ( item (position "chance.3.5" item 0 ves_info) item 1 ves_info ) 2
+      precision ( item (position "chance.4" item 0 ves_info) item 1 ves_info ) 2
+      precision ( item (position "chance.4.5" item 0 ves_info) item 1 ves_info ) 2
+      precision ( item (position "chance.5" item 0 ves_info) item 1 ves_info ) 2
+      precision ( item (position "chance.5.5" item 0 ves_info) item 1 ves_info ) 2
+      precision ( item (position "chance.6" item 0 ves_info) item 1 ves_info ) 2
+      precision ( item (position "chance.6.5" item 0 ves_info) item 1 ves_info ) 2
+      precision ( item (position "chance.7" item 0 ves_info) item 1 ves_info ) 2
+      precision ( item (position "chance.7.5" item 0 ves_info) item 1 ves_info ) 2
+      0 ; placeholder for trips that are longer than 7.5 and a maximum of 8 days
+    )
+    
+    set ves_info remove-item 1 ves_info ; remove info of one vessel, so that the next agent gets info from next vessel
+  ]
+  
+  ;; significant wave height (swh) restrictions for vessels
+  let swh_thresholds csv:from-file (word path_input_folder "swh_thresholds.csv")
+  set temp first swh_thresholds
+  foreach but-first swh_thresholds [ a ->
+    ask vessels with [ LOA >= item (position "min_LOA" temp) a and LOA <= item (position "max_LOA" temp) a ][
+      set swh_thresh  item (position "swh_thresh" temp) a
+    ]
+  ]
+  
+  ;; set daily fixed costs (these depend on the vessel size)
+  let daily_fixed_costs_all csv:from-file (word path_input_folder "fixed_costs.csv")
+  ask vessels [
+    set daily_fixed_costs (last first filter [ i -> member? round loa i ] daily_fixed_costs_all) / 365
+  ]
+
+  ;; vessel densitiy threshold
+  set vesDens_thresholds csv:from-file (word path_input_folder "vessel_densitiy_thresholds.csv")
+  
+  ;; list with possible trip lengths
+  set trip_days_steps (range 0.5 8.5 0.5)
+
+  ;; read initial_memory into netlogo
+  let initial_memory csv:from-file (word path_input_folder "initial_memory.csv")
+  let colnames first initial_memory
+  set initial_memory but-first initial_memory
+  set init_trip_num first last csv:from-file (word path_input_folder "initial_tripNum.csv")
+
+ ;;; fill vessel state variables from initial memory
+  ask vessels [
+    
+    let trip "dummy"
+    
+    ; get data of respective vessel
+    let ves_data filter [ a -> member? VE_REF a ] initial_memory
+    
+    ; get IDs ordered by dates
+    let trip_IDs remove-duplicates map [ a -> sentence item (position "FT_REF_uni" colnames) a item (position "first_date" colnames) a ] ves_data
+    set trip_IDs map [ a -> sentence a time:create substring item 1 a 0 10 ] trip_IDs
+    set trip_IDs sort-by [ [ a b ] -> time:is-before? item 2 a item 2 b  ] trip_IDs
+    set trip_IDs remove-duplicates map [ a -> first a ] trip_IDs
+    
+    foreach trip_IDs [ [ID] ->
+      
+      set trip filter [ a -> member? ID a ] ves_data
+      
+      set list_catch lput ( map [a -> item (position "kg" colnames) a ] trip ) list_catch
+      set list_eur lput ( map [a -> item (position "eur" colnames) a ] trip ) list_eur
+      set list_fuel lput (item (position "fuel_total" colnames) first trip) list_fuel
+      set list_trip_days lput (item (position "trip_days" colnames) first trip) list_trip_days
+      set list_gears lput (item (position "gear" colnames) first trip) list_gears
+      set list_FishGro lput (item (position "metier" colnames) first trip) list_FishGro
+      set list_first_day lput (item (position "first_date" colnames) first trip) list_first_day
+      set list_tripDays_delMem lput (item (position "first_date" colnames) first trip) list_tripDays_delMem
+      set list_last_day lput (item (position "last_date" colnames) first trip) list_last_day
+      set list_profit lput (item (position "profit_01" colnames) first trip) list_profit
+      set list_profit_day lput (item (position "profit_day" colnames) first trip) list_profit_day
+      set list_pred_profit_day lput (last list_profit_day) list_pred_profit_day
+      set list_center_ID lput (item (position "w_center_ID" colnames) first trip) list_center_ID
+      set list_center_agent lput (one-of patches with [ dummy_ID = (item (position "w_center_ID" colnames) first trip) ]) list_center_agent
+      ; set list_center_agent lput (first sort patches with [ dummy_ID = (item (position "w_center_ID" colnames) first trip) ]) list_center_agent  ; Stochasticity
+      set list_landing_port lput (item (position "landing_port" colnames) first trip) list_landing_port
+      
+      ; obscure bottomT
+      let new_bottomT (item (position "NWS_bottomT" colnames) first trip)
+      set new_bottomT new_bottomT  + (random-float (new_bottomT * perceiving_error) - new_bottomT * perceiving_error )
+      set list_perc_bT_trip lput new_bottomT list_perc_bT_trip
+  ]]  
+  
+  ;;; expand initital memory and set dynamic vessel state variables from memory, as well as calibrated state variables
+
+  ask vessels [
+
+    ;; determine primary specs
+    foreach list_catch [ [catches] ->
+      set list_primary_spec lput ( item ( position (precision max catches 4) (map [ [c] -> precision c 4 ] catches) ) species_order ) list_primary_spec
+    ]
+
+    ;; set current target FishGro and default metier
+    set target_FishGro item 0 max.occurance list_FishGro
+    set default_metier target_Fishgro                                                                         ; this is chosen in a very rare occasion that there is no memory left
+
+    ;; set fishing licences (depends whether they enganged in a certain fishery during the initial memory)
+    if( (length filter [ i -> member? "NEP" i ] list_Fishgro) > 0 )[ set fish_licence lput "NEP" fish_licence ]
+    if( (length filter [ i -> member? "SOL" i ] list_Fishgro) > 0 )[ set fish_licence lput "SOL" fish_licence ]
+    if( (length filter [ i -> member? "PLE" i ] list_Fishgro) > 0 )[ set fish_licence lput "PLE" fish_licence ]
+    if( (length filter [ i -> member? "GNS" i ] list_Fishgro) > 0 )[ set fish_licence sentence ["COD" "SOL"] fish_licence ]
+    set fish_licence remove-duplicates fish_licence  
+    
+    ;; add available gears
+    set avail_gears remove-duplicates list_gears                                                              ; available gears that limit fishing options
+    if( member? "PUL" avail_gears )[ set avail_gears remove-duplicates sentence avail_gears "TBB" ]           ; if a vessel can use PUL, it can also use TBB
+    if( PUL? = false )[ set avail_gears filter [ i -> i != "PUL" ] avail_gears ]                              ; if no PUL gear is allowed, remove from available gears
+    
+    ; set fleet variable (only needed for plotting on the netlogo interface)
+    if( member? "OTB" default_metier )[ set fleet "OTB" ]
+    if( member? "CSH" default_metier )[ set fleet "CSH" ]
+    if( member? "PLE&SOL" default_metier or member? "SOL&PLE" default_metier )[ set fleet "PLE&SOL" ]
+
+    ;; set weightings of satisfacions & uncertainties as well as target savings (calibrated per fleet)
+    if( member? "OTB" default_metier )[
+      set target_savings ifelse-value( target_savings_gl = -999 )[ target_savings_OTB ][ target_savings_gl ]
+      set w_exist_sat ifelse-value( w_exist_sat_gl = -999 )[ w_exist_sat_OTB ][ w_exist_sat_gl ]
+      set w_pers_sat ifelse-value( w_pers_sat_gl = -999 )[ w_pers_sat_OTB ][ w_pers_sat_gl ]
+      set w_soc_sat ifelse-value( w_soc_sat_gl = -999 )[ w_soc_sat_OTB ][ w_soc_sat_gl ]
+      set w_exist_unc ifelse-value( w_exist_unc_gl = -999 )[ w_exist_unc_OTB ][ w_exist_unc_gl ]
+      set w_soc_unc ifelse-value( w_soc_unc_gl = -999 )[ w_soc_unc_OTB ][ w_soc_unc_gl ]
+    ]
+    if( member? "CSH" default_metier )[
+      set target_savings ifelse-value( target_savings_gl = -999 )[ target_savings_CSH ][ target_savings_gl ]
+      set w_exist_sat ifelse-value( w_exist_sat_gl = -999 )[ w_exist_sat_CSH ][ w_exist_sat_gl ]
+      set w_pers_sat ifelse-value( w_pers_sat_gl = -999 )[ w_pers_sat_CSH ][ w_pers_sat_gl ]
+      set w_soc_sat ifelse-value( w_soc_sat_gl = -999 )[ w_soc_sat_CSH ][ w_soc_sat_gl ]
+      set w_exist_unc ifelse-value( w_exist_unc_gl = -999 )[ w_exist_unc_CSH ][ w_exist_unc_gl ]
+      set w_soc_unc ifelse-value( w_soc_unc_gl = -999 )[ w_soc_unc_CSH ][ w_soc_unc_gl ]
+    ]
+    if( member? "PLE&SOL" default_metier or member? "SOL&PLE" default_metier )[
+      set target_savings ifelse-value( target_savings_gl = -999 )[ target_savings_PLESOL ][ target_savings_gl ]
+      set w_exist_sat ifelse-value( w_exist_sat_gl = -999 )[ w_exist_sat_PLESOL ][ w_exist_sat_gl ]
+      set w_pers_sat ifelse-value( w_pers_sat_gl = -999 )[ w_pers_sat_PLESOL ][ w_pers_sat_gl ]
+      set w_soc_sat ifelse-value( w_soc_sat_gl = -999 )[ w_soc_sat_PLESOL ][ w_soc_sat_gl ]
+      set w_exist_unc ifelse-value( w_exist_unc_gl = -999 )[ w_exist_unc_PLESOL ][ w_exist_unc_gl ]
+      set w_soc_unc ifelse-value( w_soc_unc_gl = -999 )[ w_soc_unc_PLESOL ][ w_soc_unc_gl ]
+    ]
+
+    ;; set starting savings
+    set savings target_savings * 0.51
+    
+    ;; set current port (port last used in tris of initial memory) 
+    ; move vessel to its initial current port
+    set current_port last list_landing_port
+    let aim_port current_port
+    move-to one-of ports with [ port_name = aim_port ]
+
+    ;; set dummy variables of initial memory for those trip variables that are not filled by initial memory
+    set list_matched_ID n-values init_trip_num ["initial_memory"]
+    set list_num_searches n-values init_trip_num [-999]
+    set list_num_patches n-values init_trip_num [-999]
+    set list_steam_time n-values init_trip_num [-999]
+    set list_fish_time n-values init_trip_num [-999]
+    set list_uncertainty n-values init_trip_num [-999]
+    set list_transfer n-values init_trip_num [-999]
+    set list_depreciations n-values init_trip_num [-999]
+    set list_trip_patch_ids n-values init_trip_num [-999]
+    set list_mean_depl_coeff n-values init_trip_num [-999]
+    
+    ;; set initial helper variables for calculating personal satisfaction
+    
+    let uni_g remove-duplicates list_gears
+    let freq_g map[ a -> (frequency a list_gears) / length list_gears ] uni_g
+    set freq_g map[ a -> a > 0.2 ] freq_g
+    set freq_g all.position freq_g true
+    set common_gears map[ a -> item a uni_g ] freq_g
+    
+    ; common primary species
+    let uni_sp remove-duplicates list_primary_spec
+    let freq_sp map[ a -> (frequency a list_primary_spec) / length list_primary_spec ] uni_sp
+    set freq_sp map[ a -> a > 0.2 ] freq_sp
+    set freq_sp all.position freq_sp true
+    set common_prime_spec map[ a -> item a uni_sp ] freq_sp
+    
+  ]
+  
+  ;;; Create initial social networks
+  update.soc.net 0.25 0.5
+  
+   ;;; Fill in initial peer lists and obscure predicted profits
+  ask vessels[
+    
+    ;; Fill initial lists for mean profits of peers (important for social satisfaction) and gears and primary species of peers (important for social uncertainty)
+    ; For agents without any peers put "no peers"
+    ; For agents with peers fill in mean profit, gear, and primary species of peers from the closest trip in the trip data base
+    ifelse( count curr_peers = 0 )
+    [  
+      repeat (length list_first_day) [ 
+        set list_meanProfit_peers lput "no peers" list_meanProfit_peers 
+        set list_gears_peers lput "no peers" list_gears_peers 
+        set list_primeSpec_peers lput "no peers" list_primeSpec_peers 
+      ] 
+    ]
+    [ 
+      let first_days_temp map [ d -> time:create d ] list_first_day
+      foreach first_days_temp [ d ->
+        let date_profits [] 
+        let date_gears []
+        let date_primeSpecs []
+        ask curr_peers [          
+          let date_diffs map [ d2 -> abs time:difference-between (time:create d2) d "days" ] list_first_day
+          set w_pos position min date_diffs date_diffs 
+          set date_profits lput (item w_pos list_profit_day) date_profits 
+          set date_gears lput (item w_pos list_gears) date_gears
+          set date_primeSpecs lput (item w_pos list_primary_spec) date_primeSpecs          
+        ]
+        set list_meanProfit_peers lput (mean date_profits) list_meanProfit_peers  
+        set list_gears_peers lput (remove-duplicates date_gears) list_gears_peers
+        set list_primeSpec_peers lput (remove-duplicates date_primeSpecs) list_primeSpec_peers
+;        set list_gears_peers lput (sentence remove-duplicates date_gears "do nothing") list_gears_peers
+;        set list_primeSpec_peers lput (sentence remove-duplicates date_primeSpecs "do nothing") list_primeSpec_peers      
+      ]
+    ]
+    
+    
+    ;; Obscure prediction for profits (important for existence uncertainty
+    ; Increase every 4th element simulating a prediction below profits of 25% 
+    ; This will lead to a existence uncertainy above 0 and below 0.5
+    foreach (range 0 (length list_first_day) 4) [ i ->
+      set list_pred_profit_day ifelse-value( item i list_pred_profit_day >= 0)
+      [ 
+        replace-item i list_pred_profit_day (item i list_pred_profit_day * 1.4)  ; if positive
+      ][
+        replace-item i list_pred_profit_day (item i list_pred_profit_day * 0.6)  ; if negative 
+    ]]
+  ]   
+
+  ;;; remove social network (peers) since it will be filled during the first tick
+  ; otherwise the length of the peer lists are not correct
+  ask vessels [ set list_peers [] set list_ext_peers [] ]
+
+  ;;; if a scenario or base year is chosen, change the year of initial memory
+  if( Scenario? != "none" )[
+    ask vessels [
+      set list_first_day map[ a -> (word "2999" substring a 4 18) ] list_first_day
+      set list_last_day map[ a -> (word "2999" substring a 4 18) ] list_last_day
+      set list_tripDays_delMem map[ a -> (word "2999" substring a 4 18) ] list_tripDays_delMem
+      ]
+    ]
+
+  ;;; if a spatial scenario is chosen, adapt the spatial fishing restrictions
+  if( Scenario? != "none" )[
+
+    let spat_restr_file "dummy"
+    if( Scenario? = "base_year" )[ set spat_restr_file "Fish_restr_2018-12.asc" ]
+    if( Scenario? = "NTZ" )[ set spat_restr_file "Fish_restr_3100-01.asc" ]
+    if( Scenario? = "test" )[ set spat_restr_file "test.asc" ]
+
+    ;; set up spatial restriciton for Scenarios and avoiding apply-raster bug
+    file-open (word path_input_folder "fish_restr_months/" spat_restr_file)
+    repeat 6 [let header file-read-line] ; skip header
+    set temp []
+    while [file-at-end? = false][ set temp lput file-read temp ]
+    file-close
+    (foreach sort patches temp
+      [ [a b] -> ask a [ set spat_restr b ] ] )
+
+    ; translate spatial restriction information from numbers to characters
+    let spat_restr_trans but-first csv:from-file (word path_input_folder "fish_restr_months/spat_restr_trans.csv")
+    foreach spat_restr_trans [
+      a -> ask patches with [ spat_restr = item 1 a ][ set spat_restr item 0 a ]
+    ]
+
+    ;; all patches in strict fishing restrictions are unfishable
+    ask patches with [ member? "OWF" spat_restr or member? "NTZ" spat_restr or member? "coastFFH" spat_restr ][
+      set fishable? false
+    ]
+  ]
+  
+  ;;; color fishing restricitons
+  ask patches with [ member? "plaice_box" spat_restr ][ set pcolor grey ]
+  ask patches with [ member? "OWF" spat_restr or member? "NTZ" spat_restr or member? "coastFFH" spat_restr ][ set pcolor orange ]
+
+end
+
+;;; read and set calibrated paramter values from file ;;;
+
+to read.calibrated.parameters [ file_path ]
+
+  ;;; get calibrated parameters
+  let calibrated_par csv:from-file file_path
+  set w_exist_sat_gl item (position "WExistSat_gl" first calibrated_par) last calibrated_par
+  set w_pers_sat_gl item (position "WPersSat_gl" first calibrated_par) last calibrated_par
+  set w_soc_sat_gl item (position "WSocSat_gl" first calibrated_par) last calibrated_par
+  set w_exist_unc_gl item (position "WExistUnc_gl" first calibrated_par) last calibrated_par
+  set w_soc_unc_gl item (position "WSocUnc_gl" first calibrated_par) last calibrated_par
+  set target_savings_gl item (position "target_savings_gl" first calibrated_par) last calibrated_par
+  set w_exist_sat_OTB item (position "WExistSat_OTB" first calibrated_par) last calibrated_par
+  set w_pers_sat_OTB item (position "WPersSat_OTB" first calibrated_par) last calibrated_par
+  set w_soc_sat_OTB item (position "WSocSat_OTB" first calibrated_par) last calibrated_par
+  set w_exist_unc_OTB item (position "WExistUnc_OTB" first calibrated_par) last calibrated_par
+  set w_soc_unc_OTB item (position "WSocUnc_OTB" first calibrated_par) last calibrated_par
+  set target_savings_OTB item (position "target_savings_OTB" first calibrated_par) last calibrated_par
+  set w_exist_sat_CSH item (position "WExistSat_CSH" first calibrated_par) last calibrated_par
+  set w_pers_sat_CSH item (position "WPersSat_CSH" first calibrated_par) last calibrated_par
+  set w_soc_sat_CSH item (position "WSocSat_CSH" first calibrated_par) last calibrated_par
+  set w_exist_unc_CSH item (position "WExistUnc_CSH" first calibrated_par) last calibrated_par
+  set w_soc_unc_CSH item (position "WSocUnc_CSH" first calibrated_par) last calibrated_par
+  set target_savings_CSH item (position "target_savings_CSH" first calibrated_par) last calibrated_par
+  set w_exist_sat_PLESOL item (position "WExistSat_PLESOL" first calibrated_par) last calibrated_par
+  set w_pers_sat_PLESOL item (position "WPersSat_PLESOL" first calibrated_par) last calibrated_par
+  set w_soc_sat_PLESOL item (position "WSocSat_PLESOL" first calibrated_par) last calibrated_par
+  set w_exist_unc_PLESOL item (position "WExistUnc_PLESOL" first calibrated_par) last calibrated_par
+  set w_soc_unc_PLESOL item (position "WSocUnc_PLESOL" first calibrated_par) last calibrated_par
+  set target_savings_PLESOL item (position "target_savings_PLESOL" first calibrated_par) last calibrated_par
+  set fish_depletion item (position "fishDepl" first calibrated_par) last calibrated_par
+  set fish_recovery item (position "fishRecov" first calibrated_par) last calibrated_par
+
+end
+

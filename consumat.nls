@@ -1,0 +1,412 @@
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;   Functions related the Consumat approach (incl satisfactions & uncertainties)   ;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+
+;;; update CONSUMAT values (satisfactions & uncertainties) and status ;;;
+; if you want that consumat variables are directly filled into vessel state variables, the first parameter needs to be "true"
+
+to-report consumat.var.update [ fill_state which_vars w_savings list_prime_spec list_g com_prime_spec com_gears Tdates list_predProf_day list_prof_day peer_profits peer_gears peer_prime_spec ]
+
+  ; needs to be called in vessel loop
+
+  ;;; dummy vars
+  let existence_sat_TEMP "dummy"
+  let personal_sat_TEMP "dummy"
+  let social_sat_TEMP "dummy"
+  let existence_unc_TEMP "dummy"
+  let social_unc_TEMP "dummy"
+  let strategy "dummy"
+
+
+;  ;; get the first date, which should be taken into consideration for satisfactions and uncertainties
+;  ;; based on the "mem_backwards" (refers to memory length in months)
+;  let back_date time:show time:plus day (-1 * mem_backwards) "months" "YYYY-MM-dd HH:MM:SS"
+;
+;  ;; There is a bug if certain java version are used
+;  ; if the date is exactly the last day of the last year than the created year will be the next not the last
+;  ; hence the following line fixes this bug
+;  if( time:difference-between back_date (word last day_ch " 00:00:01") "day" < 0 )[ set back_date time:plus back_date -1 "year" ]
+
+  ;;; Existence satisfaction (sufficient profit)
+  ifelse (member? "exist_sat" which_vars)[
+    set existence_sat_TEMP (get.exist.sat VE_REF w_savings)
+
+    if( fill_state = true )[ set existence_sat lput existence_sat_TEMP existence_sat ]   ; fill state variable
+  ][
+    set existence_sat_TEMP last existence_sat
+  ]
+
+    ;;; Personal satisfaction (consistency of actions)
+  ifelse (member? "pers_sat" which_vars)[
+    set personal_sat_TEMP (get.pers.sat VE_REF list_prime_spec list_g com_prime_spec com_gears)
+
+    if( fill_state = true )[                                                              ; fill state variable
+      set personal_sat lput item 0 personal_sat_TEMP personal_sat
+      set personal_sat_gear lput item 1 personal_sat_TEMP personal_sat_gear
+      set personal_sat_spec lput item 2 personal_sat_TEMP personal_sat_spec
+    ]
+  ][
+    set personal_sat_TEMP (list last personal_sat)
+  ]
+
+
+  ;;; Social satisfacton (profit in comparison to close social network)
+  ifelse (member? "soc_sat" which_vars)[
+
+    set social_sat_TEMP (get.soc.sat VE_REF list_prof_day Tdates peer_profits)
+
+    if( fill_state = true )[ set social_sat lput social_sat_TEMP social_sat ]              ; fill state variable
+  ][
+    set social_sat_TEMP last social_sat
+  ]
+
+  ;;; Social uncertainty
+  ifelse (member? "soc_unc" which_vars)[
+    set social_unc_TEMP (get.soc.unc VE_REF list_prime_spec list_g Tdates peer_gears peer_prime_spec)
+
+    if( fill_state = true )[                                                               ; fill state variable
+      set social_unc lput item 0 social_unc_TEMP social_unc
+      set social_unc_spec lput item 1 social_unc_TEMP social_unc_spec
+      set social_unc_gear lput item 2 social_unc_TEMP social_unc_gear
+    ]
+  ][
+   set social_unc_TEMP (list last social_unc)
+  ]
+
+  ;;; Existence uncertainty
+  ifelse (member? "exist_unc" which_vars)[
+    set existence_unc_TEMP (get.exist.unc VE_REF list_predProf_day list_prof_day)
+
+    if( fill_state = true )[ set existence_unc lput existence_unc_TEMP existence_unc ]      ; fill state variable
+  ][
+    set existence_unc_TEMP last existence_unc
+  ]
+
+  ;;; calculate overall satisfaction and uncertainty
+
+  ;; check how many satisfaction and uncertainty variables are present (not -1000).
+  ;; If individual satisfactons or uncertainties are not considered
+  ;; (i.e. if agent has no social network, then the social satisfaction and uncertainty are not considered)
+  ;; or if they are explicitly removed, the other satisfactions and uncertainties are weighed more,
+  ;; so that the weights of satisfactions und uncertainties both sum up to 1
+
+  let sats (list existence_sat_TEMP (item 0 personal_sat_TEMP) social_sat_TEMP)
+  let uncs (list (item 0 social_unc_TEMP) existence_unc_TEMP)
+  let sat_pos all.anti.position sats -1000
+  let unc_pos all.anti.position uncs -1000
+  set sats map [ a -> item a sats ] sat_pos
+  set uncs map [ a -> item a uncs ] unc_pos
+
+  ;; get lists of weighting factors for the remaining satisfactions and uncertainties
+  let sat_weights map [ a -> item a (list W_exist_sat W_pers_sat W_soc_sat) ] sat_pos
+  let unc_weights map [ a -> item a (list W_soc_unc W_exist_unc) ] unc_pos
+
+  ;; do calulations including weighting factors
+
+  ; if no satisfactions are considered, set overall satisfaction to 1
+  ; if no uncertainties are considered, set overall uncertainty to 0
+
+  ; weighting always sums up to 1, so if e.g. one satisfactions is missing the missing weight is
+  ; distributed equally to the remaining two satisfactions
+
+  let overall_sat_TEMP "dummy"
+  ifelse ( length sats = 0 ) [
+    set overall_sat_TEMP ifelse-value( ambition_lvl = 1 )[ 1 ][ precision (ambition_lvl * 1.05) 2 ]
+  ][
+    set sat_weights map [ a -> precision (a / (sum sat_weights)) 6 ] sat_weights
+    set overall_sat_TEMP precision ( sum (map [ [a b] -> a * b ] sats sat_weights) ) 4
+  ]
+
+  let overall_unc_TEMP "dummy"
+  ifelse ( length uncs = 0 ) [ set overall_unc_TEMP precision (tolerance_lvl * 0.95) 2 ]
+  [
+    set unc_weights map [ a -> precision (a / (sum unc_weights)) 6 ] unc_weights
+    set overall_unc_TEMP precision ( sum (map [ [a b] -> a * b ] uncs unc_weights) ) 4
+  ]
+
+  ;;; set status (satisfied / unsatisfied & certain / uncertain
+  let status_sat_TEMP ifelse-value ( ambition_lvl > overall_sat_TEMP ) [ "unsatisfied" ] [ "satisfied" ]
+  let status_unc_TEMP ifelse-value ( tolerance_lvl < overall_unc_TEMP ) [  "uncertain" ] [ "certain" ]
+
+;;; determing strategy
+
+  ; repeat
+  if( status_sat_TEMP = "satisfied" and status_unc_TEMP = "certain" )[ set strategy "repetition" ]
+
+  ; imitate
+  if( status_sat_TEMP = "satisfied" and status_unc_TEMP = "uncertain" )[ set strategy "imitation" ]
+
+  ; deliberate
+  if( status_sat_TEMP = "unsatisfied" and status_unc_TEMP = "certain" )[ set strategy "deliberation" ]
+
+  ; inquire
+  if( status_sat_TEMP = "unsatisfied" and status_unc_TEMP = "uncertain" )[ set strategy "inquiring" ]
+
+;;; fill state variables
+  if( fill_state = true )[
+    set overall_sat lput overall_sat_TEMP  overall_sat
+    set overall_unc lput overall_unc_TEMP overall_unc
+    set status_sat lput status_sat_TEMP status_sat
+    set status_unc lput status_unc_TEMP status_unc
+    set consumat_strategy lput strategy consumat_strategy
+  ]
+
+;;; output
+    report (list overall_sat_TEMP overall_unc_TEMP )
+
+end
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;; report functions to get consumat variables ;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+; (to simply calc values for one vessel with its own variables, one can provide a vessel ref and "own" for all other input parameters)
+
+;;;; output exist_sat 
+
+to-report get.exist.sat [ ref w_savings ]
+
+  ; adjust in case variable should not be considered (-1000) or altered variable should be reported (> -999)
+  ifelse( W_exist_sat = 0 )[
+
+    report -1000
+
+  ][
+
+    ;;; get variables from vessel if "own" was chosen
+    let ves vessels with [ VE_REF = ref ]
+    if ( w_savings = "own" )[ set w_savings savings ]
+
+    ;;; calculate existence satisfaction using list of past savings
+
+    let exist_sat w_savings / target_savings
+    set exist_sat ifelse-value( exist_sat > 1 )[ 1 ][ exist_sat ]
+    set exist_sat ifelse-value( exist_sat < 0 )[ 0 ][ exist_sat ]
+
+      ; output
+      report precision (exist_sat) 4
+
+  ] ; end altered variable
+
+end
+
+;;; output [pers_sat pers_sat_spec pers_sat_gear] 
+
+to-report get.pers.sat [ ref list_prime_spec list_g com_prime_spec com_gears ]
+
+  ; adjust in case variable should not be considered (-1000) or altered variable should be reported (> -999)
+  ifelse( W_pers_sat = 0 )[
+
+    report (list -1000 -1000 -1000)
+
+  ][
+
+    ;;; get variables from vessel if "own" was chosen
+    let ves vessels with [ VE_REF = ref ]
+    if( list_prime_spec = "own" ) [ set list_prime_spec last [ list_primary_spec ] of ves  ]
+    if( list_g = "own" ) [ set list_g last [ list_gears ] of ves ]
+    if( com_prime_spec = "own" ) [ set com_prime_spec last [ common_prime_spec ] of ves ]
+    if( com_gears = "own" ) [ set com_gears last [ common_gears ] of ves ]
+
+    ; continue if there are still values in trip lists
+    ifelse( length(list_prime_spec) = 0 )[
+
+      ; output for the case that there are no more trip lists
+      ; report a value that is slightly underneath the ambition level (triggering deliberation or inquiring)
+      let out_list n-values 2 [ precision (ambition_lvl * .95 * (1 / 2)) 4 ]
+      report fput (ambition_lvl * .95) out_list
+
+    ][
+
+      ; newest version. Compare prime spec and gear lists to commonly used gears and prime specs (througout the last year; see 'update yearly variables' in 'go')
+      let prob_spec (length filter[ a -> member? a com_prime_spec ] list_prime_spec) / length list_prime_spec
+      let prob_gear (length filter[ a -> member? a com_gears ] list_g) / length list_g
+
+      ; create list for output
+      let out_list []
+
+      ; personal satisfaction for species and multiply with 1 / num ind pers_satis
+      set out_list fput (prob_spec * (1 / 2) ) out_list
+
+      ; personal satisfaction for gears
+      set out_list fput (prob_gear * (1 / 2) ) out_list
+
+      ; overall personal satisfaction
+      set out_list fput precision ( item 0 out_list + item 1 out_list ) 4 out_list
+
+      ; list for output
+      report out_list
+
+    ] ; end no memory
+  ] ; end altered variable
+
+end
+
+;;; output soc_sat  
+
+to-report get.soc.sat [ ref list_prof_day Tdates peer_profits ]
+
+  ; adjust in case variable should not be considered (-1000) or altered variable should be reported (> -999)
+  ifelse( W_soc_sat = 0 )[
+
+    report -1000
+
+  ][
+
+    ;;; get variables from vessel if "own" was chosen
+    let ves vessels with [ VE_REF = ref ]
+    if( list_prof_day = "own" )[set list_prof_day last [ list_profit_day ] of ves ]
+    if( peer_profits = "own" )[set peer_profits last [ list_meanProfit_peers ] of ves ]
+    if( Tdates = "own" ) [ set Tdates last [ list_first_day ] of ves  ]
+
+    ; output for the case that there are no more trip lists (no more memory after back date)
+    ; report a value that is slightly underneath the ambition level
+    ifelse( length(list_prof_day) = 0 )[
+
+      ; output
+      report precision (ambition_lvl * .95) 4
+
+    ][
+
+      ; remove all entries in peer profits, when there were no peers
+      let w_pos all.anti.position peer_profits "no peers"
+      set list_prof_day map [ a -> item a list_prof_day ] w_pos
+      set peer_profits map [ a -> item a peer_profits ] w_pos
+
+      ; if the peer_profit list was empty do not consider social satisfaction (report -1000) (in that case they were no trips with peers or peers no trips yet),
+      ifelse( length(peer_profits) = 0 )[
+
+        ; output
+        report -1000
+      ][
+
+        ; get parts of lists that exceed own profit
+        let exceed_soc_inc ( map [ [a b] -> a >= b ] list_prof_day peer_profits )
+        set exceed_soc_inc filter [ i -> i = true ] exceed_soc_inc
+
+        ; calc social satisfaction (proportion of incomes exceeding peer income)
+        let soc_sat (length exceed_soc_inc / length list_prof_day )
+
+        ; output
+        report precision (soc_sat) 4
+
+      ] ; end empty peer list
+    ] ; end empnty profit list
+  ]; end not consider or altered value
+
+end
+
+;;; output [soc_unc soc_unc_spec soc_unc_gear] 
+
+to-report get.soc.unc [ ref list_prime_spec list_g Tdates peer_gears peer_prime_specs ]
+
+  ; adjust in case variable should not be considered (-1000) or altered variable should be reported (> -999)
+  ifelse( W_soc_unc = 0 )[
+
+    report (list -1000 -1000 -1000 -1000)
+
+  ][
+
+    ;;; get variables from vessel if "own" was chosen
+    let ves vessels with [ VE_REF = ref ]
+    if( list_prime_spec = "own" ) [ set list_prime_spec last [ list_primary_spec ] of ves  ]
+    if( list_g = "own" ) [ set list_g last [ list_gears ] of ves ]
+    if( peer_prime_specs = "own" ) [ set peer_prime_specs last [ list_primeSpec_peers ] of ves  ]
+    if( peer_gears = "own" ) [ set peer_gears last [ list_gears_peers ] of ves  ]
+
+    ; continue if there are still values in trip lists. If these are empty than there are no memories before back date.
+    ifelse( length(list_prime_spec) = 0 )[
+
+      ; output for the case that there are no more trip lists
+      ; report a value that is slightly above the tolerance level, triggering imitation or inquiring
+      let soc_unc ifelse-value( tolerance_lvl = 1 )[ 1 ][ precision (tolerance_lvl * 1.05) 4 ]
+      report (list soc_unc (soc_unc * .5) (soc_unc * .5))
+
+    ][
+
+      ; remove all entries of trips without any peers
+      let w_pos all.anti.position peer_prime_specs "no peers"
+      set list_prime_spec map [ a -> item a list_prime_spec] w_pos
+      set list_g map [ a -> item a list_g] w_pos
+      set peer_prime_specs map [ a -> item a peer_prime_specs] w_pos
+      set peer_gears map [ a -> item a peer_gears] w_pos
+
+      ; if all elements of peer specs / FGros / gears are empty social uncertainty will not be considered (report -1000),
+      ; because agent does not have trips with peers in memory.
+      ifelse( length( peer_prime_specs ) = 0 )[
+
+        report (list -1000 -1000 -1000)
+
+      ][
+
+        let soc_unc_spec (map [ [a b] -> member? a b ] list_prime_spec peer_prime_specs)
+        set soc_unc_spec frequency false soc_unc_spec / length (soc_unc_spec)
+        let soc_unc_gear (map [ [a b] -> member? a b ] list_g peer_gears)
+        set soc_unc_gear frequency false soc_unc_gear / length (soc_unc_gear)
+
+        ; multiply individual uncertainties with 1/2 (so that overall unc is max 1)
+        set soc_unc_spec (soc_unc_spec * (1 / 2))
+        set soc_unc_gear (soc_unc_gear * (1 / 2))
+
+        ; sum up individual uncertainties
+        let soc_unc precision (soc_unc_spec + soc_unc_gear) 4
+
+        ; output
+        report (list soc_unc soc_unc_spec soc_unc_gear)
+
+      ] ; end no trips with peers
+    ] ; end no trips after back date
+  ] ; end variables not considered or altered
+
+end
+
+;;; output exist_unc 
+
+to-report get.exist.unc [ ref list_predProf_day list_prof_day ]
+
+  ; adjust in case variable should not be considered (-1000) or altered variable should be reported (> -999)
+  ifelse( W_exist_unc = 0 )[
+
+    report -1000
+
+  ][
+
+    ;;; get variables from vessel if "own" was chosen
+    let ves vessels with [ VE_REF = ref ]
+    if( list_predProf_day = "own" ) [ set list_predProf_day last [ list_pred_profit_day ] of ves  ]
+    if( list_prof_day = "own" ) [ set list_prof_day last [ list_profit_day ] of ves  ]
+   
+    ; continue if there are still values in trip lists
+    ifelse( length(list_predProf_day) = 0 )[
+
+      ; output for the case that there are no more trip lists
+      ; report a value that is slightly above the tolerance level, triggering imitation or inquiring
+      let exist_unc ifelse-value( tolerance_lvl = 1 )[ 1 ][ precision (tolerance_lvl * 1.05) 4 ]
+      report exist_unc
+
+    ][
+
+      ;; more elaborated calculation for downside risk that weighs how much lower the predicted pofit is in comparison to the the expected profit    
+      let exist_unc "dummy"
+      ifelse( length list_profit_day > 1 )[ 
+        let std_profits standard-deviation list_profit_day 
+        set exist_unc (map [ [prof pred] ->
+          ifelse-value (prof > pred)[ 0 ][
+            ifelse-value( (pred - prof) > std_profits  )[ 1 ][
+              (pred - prof) / std_profits
+        ] ] ] list_prof_day list_predProf_day)
+        set exist_unc (sum exist_unc) / length list_prof_day
+      ][
+        set exist_unc 0 
+      ]
+      
+      ; output
+      report precision ( exist_unc ) 4
+
+
+    ] ; end no memory
+  ] ; end altered variable
+
+end

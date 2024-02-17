@@ -1,0 +1,101 @@
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;   Functions related to agent perception social network   ;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;;; fishers perceive ;;;
+
+to fishers.perceive
+
+  ; needs to be called within a vessel loop
+  ; note that some pervieving (such as weather forecast) is dealt in the submodel for resource extraction
+
+  ; obsucre perceived bottom temperature, and species and fuel price (+/- perceiving_error %)
+  let upper_perceiving_error perceiving_error * 2
+  
+  set list_perc_bottomT lput (curr_bottomT + (random-float curr_bottomT * upper_perceiving_error - curr_bottomT * perceiving_error )) list_perc_bottomT
+  set perc_price_ple curr_price_ple + (random-float curr_price_ple * upper_perceiving_error - curr_price_ple * perceiving_error )
+  set perc_price_sol curr_price_sol + (random-float curr_price_sol * upper_perceiving_error - curr_price_sol * perceiving_error )
+  set perc_price_nep curr_price_nep + (random-float curr_price_nep * upper_perceiving_error - curr_price_nep * perceiving_error )
+  set perc_price_tur curr_price_tur + (random-float curr_price_tur * upper_perceiving_error - curr_price_tur * perceiving_error )
+  set perc_price_bll curr_price_bll + (random-float curr_price_bll * upper_perceiving_error - curr_price_bll * perceiving_error )
+  set perc_price_csh curr_price_csh + (random-float curr_price_csh * upper_perceiving_error - curr_price_csh * perceiving_error )
+  set perc_price_cod curr_price_cod + (random-float curr_price_cod * upper_perceiving_error - curr_price_cod * perceiving_error )
+  set perc_price_fuel curr_price_fuel + (random-float curr_price_fuel * upper_perceiving_error - curr_price_fuel * perceiving_error )
+  
+end
+
+;;; update social network ;;;
+
+to update.soc.net [ peer_thresh ext_peer_thresh ]
+
+  ; dummy variables
+  let peers "dummy"
+  let ext_peers "dummy"
+
+  ; create info lists
+    let VE_REF_list []
+    let port_list []
+    let PO_list []
+    ask vessels [
+      set VE_REF_list fput VE_REF VE_REF_list
+      set port_list fput current_port port_list
+      set PO_list fput producer_organisation PO_list
+    ]
+  let DM_list (list port_list PO_list)
+
+  ; calc gower distance
+  let DM gower.distance.matrix DM_list
+
+  ; identify peers
+  set peers map [ a -> map [ b -> b <= peer_thresh ] a ] DM
+  set peers map [ a -> all.position a true ] peers
+  set peers map [ a -> map [ b -> item b VE_REF_list ] a ] peers
+
+  ; extended peers
+  set ext_peers map [ a -> map [ b -> b <= ext_peer_thresh ] a ] DM
+  set ext_peers map [ a -> all.position a true ] ext_peers
+  set ext_peers map [ a -> map [ b -> item b VE_REF_list ] a ] ext_peers
+
+  ; add to state variables
+  ; filter for all but the current vessel
+  ask vessels [
+    let w_pos position VE_REF VE_REF_list
+    set temp filter [ a -> a != VE_REF] item w_pos peers
+    set list_peers lput temp list_peers
+    set curr_peers vessels with [ member? VE_REF temp ]
+    set temp filter [ a -> a != VE_REF] item w_pos ext_peers
+    set curr_ext_peers vessels with [ member? VE_REF temp ]
+    set list_ext_peers lput temp list_ext_peers
+  ]
+
+end
+
+;;; gower matrix for character / factor variables ;;;
+
+to-report gower.distance.matrix [ col_list ]
+
+  ; check whether all elements (columns) have the same length (number of rows)
+  let nrow remove-duplicates (map [ a -> length a ] col_list)
+  if( length nrow != 1 )[ error "GOWER DM: The elements do not have the same length" ]
+
+  ; calc distances
+  let row_index n-values (first nrow) [i -> i]
+  let col_index n-values (length col_list) [i -> i]
+
+  let ks "dummy"
+  let out_list []
+  foreach row_index [ j ->
+    set ks row_index
+    set out_list lput
+    map [ k ->
+      (1 / length col_list) * sum map [ i ->
+        ifelse-value( (item j (item i col_list)) = (item k (item i col_list)) )[ 0 ][ 1 ]
+      ] col_index
+    ] ks
+    out_list
+  ]
+
+  report out_list
+
+end
+

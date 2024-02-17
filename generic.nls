@@ -1,0 +1,77 @@
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;; GENERIC FUNCTIONS, WHICH ARE USED THROUGHOUT THE WHOLE CODE ;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;;; get all indeces of a value in a list ;;;
+
+to-report all.position [lst x]
+
+ report map first filter [ a -> last a = x ] (map sentence n-values (length lst)[ i -> i ] lst)
+
+end
+
+;;; inverted version of previous function ;;;
+
+to-report all.anti.position [lst x]
+
+  let indices n-values (length lst) [ i -> i ]
+  set indices (map [ [a b] -> word (a != x) b ] lst indices )
+  set indices filter [ [i] -> substring i 0 1 = "t" ] indices
+  report map [ [i] -> read-from-string substring i 4 length(i) ] indices
+  ; report map [ [i] -> item i rep_lst ] indices
+
+end
+
+;;; replace an item in a nested list ;;;
+
+to-report replace.subitem [index1 index2 lists value]
+  let old-sublist item index1 lists
+  report replace-item index1 lists (replace-item index2 old-sublist value)
+end
+
+;;; report the frequency of a value in a list ;;;
+
+to-report frequency [x lst ]
+    report length (filter [ i -> i = x] lst)
+end
+
+;;; report the item with the higest frequency in a list ;;;
+
+to-report max.occurance [ lst ]
+
+  let out  map [ i -> frequency i lst] lst
+  set out all.position out max out
+  set out map [ i -> item i lst ] out
+  report remove-duplicates out
+
+end
+
+;;; range-normalization between 0 and 1 ;;;
+
+to-report range.01 [x]
+
+  let mi min(x)
+  let ma max(x)
+  let r ma - mi
+  let out ifelse-value( r = 0 )
+  [ n-values (length x) [0.5] ]
+  [ map [ a -> ( a - mi ) / r ] x ]
+  report out
+
+end
+
+;;; transform a month into a season
+
+to-report get.season [m]
+  
+  let out ifelse-value (member? m ["12" "01" "02"])
+  [ "Winter" ]
+  [ ifelse-value (member? m ["03" "04" "05"])
+    [ "Spring" ]
+    [ ifelse-value (member? m ["06" "07" "08"])
+      [ "Summer" ]
+      [ "Fall" ]
+  ]]
+  report out
+  
+end

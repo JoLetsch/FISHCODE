@@ -1,0 +1,944 @@
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;   Functions related to modelling spatial movement, landings, and profits   ;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+
+;; get center patch of fishing trip and patches that will be fished ;;;
+
+to-report get.fished.patches [ option ]
+
+  ;;; get trip characteristics from the fishing option (fishing ground, max days, and center patch)
+  set target_FishGro first option
+  let w_FishGro first option
+  let w_gear substring w_FishGro 0 3
+  set curr_trip_length item 1 option
+  let pred_profit_day item 3 option
+  let center_patch item 6 option
+  let land_port item 8 option
+  
+  ; get name of spatial fishng ground (in case the gear is TBB or PUL, get the combined Fishgro 'TBBPUL')
+  let FishGro_spatial_name w_FishGro 
+  if( member? "TBB" FishGro_spatial_name or member? "PUL" FishGro_spatial_name)[ 
+    set FishGro_spatial_name (word "TBBPUL" substring FishGro_spatial_name 3 length FishGro_spatial_name) ]
+
+  ;;; calculate guess for new fishing time (assuming 15 fishing hours per trip day, which is the average)
+  ; The reason for guessing the fishing time is that it hasnt been modelled yet at this point,
+  ; but is necessary to determine the number of needed patches
+  let guessed_fishing_time 15 * curr_trip_length
+
+  ;;; get number of patches to be fished (depends on metier and fishing hours)
+  let num_patches first filter [ a -> member? w_FishGro a ] spatial_fishing_expansion
+  set num_patches round ( (item 1 num_patches) + (item 2 num_patches * guessed_fishing_time) )
+  if(num_patches < 5)[ set num_patches 5 ]
+  let radius 2
+  if( num_patches > 13 )[ set radius 5 ]
+  if( num_patches > 29 )[ set radius 6 ]
+  if( num_patches > 49 )[ set radius 7 ]
+  if( num_patches > 81 )[ set radius 8 ]
+  if( num_patches > 149 )[ set radius 9 ]
+  if( num_patches > 197 )[ set radius 10 ]
+  if( num_patches > 253 )[ set radius 11 ]
+  if( num_patches > 317 )[ set radius 12 ]
+  if( num_patches > 360 )[ error (word "needed num_patches is larger than 360 (" w_FishGro ")") ]
+
+  ;;; get intitial target centroid from matched fishing trip
+
+  ;;; search for a suitable fishing spot, defined by the vessel densitiy and sufficient suitable patches
+  ; Vessels density is calculated by the mean of vessels in all cells around the center patch in a certain radius (see above)
+  ; if vessels density is higher than the agent's threshold or there are not sufficient suitable patches (num_cells),
+  ; take a random new center patch from the radius and repeat the procedure
+  ; Also stop if the max number of attempts (max_searches) was reached
+  ; If the agent could not find enough suitable fishing patches for 30 times (num_constrained_spat_restr), it is assumed that this option is not suitable for the agent
+  ; due to spatial restrictions. The metier options is then saved as unsuitable for that agent.
+  let vessel_dens_thresh last last filter [ i -> member? w_FishGro i ] vesDens_thresholds
+  let vessel_density (vessel_dens_thresh + 1)
+  let num_searches 0
+  let num_constrained_spat_restr 0
+  let radius_patches "dummy"
+  let center_ID "dummy"
+  while [ vessel_density > vessel_dens_thresh and num_searches < 20 and num_constrained_spat_restr < 30 ][
+
+    ; get patches in radius around center patch
+    ask center_patch [ set radius_patches patches in-radius radius ]
+    set center_ID [dummy_ID] of center_patch
+
+    ; remove patch/patches that
+    ; 1) do not belong to the corresponding fishing ground (in case the gear is PUL or TBB, include fishing grounds from both gears),
+    ; 2) that are not fishable,
+    ; 3) or that violate any spatial restrictions (e.g. plaice box, if engine is larger than 221kw and vessels use beam or pulse trawl)
+    ifelse( (w_gear = "TBB" or w_gear = "PUL") and engine_kw > 221 )
+    [ set radius_patches radius_patches with [ not member? "plaice_box" spat_restr and member? FishGro_spatial_name FishGro and fishable? = true and passable? = true ] ]
+    [ set radius_patches radius_patches with [ member? FishGro_spatial_name FishGro and fishable? = true and passable? = true ] ]
+
+    ; if there not sufficient suitable patches for fishing in the radius (due to spatial fishing restrictions),
+    ; choose a radnom new center patch from the whole fishing ground. For this no search trial is added to "num_searches" since
+    ; we assume that fishers know about spatial restrictions and choose a spot with sufficent avialable fishing space before leaving the port
+    ; In case there are sufficient suitable patches, see if vessel density is low enoughd
+    ifelse( count radius_patches < num_patches )[
+
+      ; get patches that are
+      ; 1) not the previous center patch
+      ; 2) do not belong to the corresponding fishing ground,
+      ; 3) that are not fishable,
+      ; 4) or that violate any spatial restrictions (e.g. plaice box, if engine is larger than 221kw and vessels use beam or pulse trawl)
+      ifelse( (w_gear = "TBB" or w_gear = "PUL") and engine_kw > 221 )
+      [ set center_patch patches with [ not member? "plaice_box" spat_restr and member? FishGro_spatial_name FishGro and dummy_ID != center_ID and fishable? = true and passable? = true ] ]
+      [ set center_patch patches with [ member? FishGro_spatial_name FishGro and dummy_ID != center_ID and fishable? = true and passable? = true ] ]
+      set center_patch one-of center_patch
+      set center_ID [dummy_ID] of center_patch
+      set num_constrained_spat_restr num_constrained_spat_restr + 1
+      if( num_constrained_spat_restr >= 30 )[                          ; The vessel tried 30 times to find a suitable fishing spot, but was unsuccessfull due to spatial restrictions
+        set target_FishGro "STOP: no suitable pathes"                  ; Stop trying to go fishing at this fishing ground
+        set NoGo_FishGros lput w_FishGro NoGo_FishGros                 ; This fishing ground (metier) will be marked as unsuitable for this vessel
+      ]
+
+    ][
+
+      ; calcuate vessel densitiy
+      set vessel_density mean [ int_ves_num_daily + ger_ves_num ] of radius_patches
+
+      ; if vessel density exceeds threshold, look for a new adjacent fishing ground by selecting a new center patch from the radius
+      ; Also add one search trial, since the vessel was already out, but decided that the fishing spot is too crowded
+      ; Search trials will be converted into extra steaming time, which ultimately increses fuel costs and shortens fishing time
+      if( vessel_density > vessel_dens_thresh )[
+
+        set center_patch one-of radius_patches with [ dummy_ID != center_ID ]
+        set num_searches num_searches + 1                                            ; add search trial
+
+      ]; end condition looking for adjacent fishing ground
+    ]; end 0 radius patches / looking for completely new fishing ground
+  ]; end while loop looking for suitable fishing ground
+
+  ;;; Model vessel movement while fishing using lévy flights
+  let trip_patches fishing.movement center_patch radius_patches num_patches FishGro_spatial_name engine_kw
+
+  ; output
+  report (sentence pred_profit_day land_port center_patch num_searches num_patches trip_patches)
+
+end
+
+;;; find the closest trip in terms of environmental paramaters and engine power information ;;;
+
+to-report option.match.trip [ option ]
+
+  ; note that it must be called in vessel loop
+
+  ;;; match with best suiting fishing trip
+
+  ; get trip characteristics from the fishing option (fishing ground, max days, and center patch)
+  let pred_profit_day item 0 option
+  let land_port item 1 option
+  let center_patch item 2 option
+  let num_searches item 3 option
+  let num_patches item 4 option
+  let trip_patches item 5 option
+
+  ; select unique trip data for the right metier and current season
+  let trip_met get.met.uni.trip.data target_FishGro
+
+  ; Get environmental information of fished patches (These are updated weekly)
+  ; This is the order of environemtal variables (saved in 'env_par'): "NWS_bottomT" "NWS_SAL" "NWS_MLD" "elevation"
+  let env_trip ( list
+    mean [ NWS_bottomT ] of trip_patches
+    mean [ NWS_SAL ] of trip_patches
+    mean [ NWS_MLD ] of trip_patches
+    mean [ elevation ] of trip_patches )
+
+  ; calculate euclidean distance between environmental parameters of the planned trip and the
+  ; the eclidean distance function range-normalizes values to the range between 0 and 1
+  let DM map [ a -> item (position a trip_data_colnames) trip_met ] env_par
+  set DM map [ a -> fput (item a env_trip) (item a DM) ] n-values (length env_par) [ i -> i ]
+  set DM euclidean.distance.matrix DM 0
+  set DM but-first first DM
+  
+  ; get matched trip with minimum distance
+  let w_pos (position min DM DM)
+  let matched_trip item w_pos item (position "FT_REF_uni" trip_data_colnames) trip_met
+  
+  ; calculate uncertainty used to obscure catches in 'go.fishing'(depends on distance)
+  let uncertainty (min DM / max DM) / 2
+
+  ; get all necessary trip variables from matched trip
+  set w_pos all.position (item (position "FT_REF_uni" trip_data_colnames) trip_data) matched_trip
+  set matched_trip map [ a -> map [ i -> item i a ] w_pos ] trip_data
+  let m_kgs item position "kg" trip_data_colnames matched_trip
+  let m_specs item position "species" trip_data_colnames matched_trip
+  let m_fishing_time first (item position "fishing_time" trip_data_colnames matched_trip)
+  let m_engine_steps first (item position "engine_kw_steps" trip_data_colnames matched_trip)
+  let m_trip_days first (item position "trip_days" trip_data_colnames matched_trip)
+  let m_trip_ID first (item position "FT_REF_uni" trip_data_colnames matched_trip)
+
+  ;;; get start and end DAYs and DATEs of the trip
+  ; substract one from the number of trip days, because fishers start early in the morning and return late the last day. Thus the last day is exclusive.
+  ; in case the number of trip days is 1, the fisher returns in the evening of the same day
+  ; add time to start and end dates and calculate precise trip days
+  let start_date time:show time:create (word last day_ch " 06:00:00") "yyyy-MM-dd HH:mm:ss"
+  let end_date time:show (time:plus start_date curr_trip_length "days") "yyyy-MM-dd HH:mm:ss"
+
+  ; output
+  report (sentence target_FishGro pred_profit_day start_date end_date center_patch (list m_kgs) (list m_specs) m_fishing_time m_trip_days m_engine_steps m_trip_ID uncertainty land_port num_searches trip_patches num_patches )
+  
+end
+
+;;; transfer boat from one port to another, if necessary ;;;
+; add transfer time to start time, so the vessel starts later on fishing trip and potentially has less time to fish
+
+to-report transfer.vessel [ option ]
+
+  ; needs to be called in vessel loop
+
+  ; set variables
+  let start_date item 2 option
+  let end_date item 3 option
+  let center_patch item 4 option
+  let target_port item 12 option
+  let original_port current_port
+  let transfer_time 0
+  let transferred? false
+
+  ; only continue if current port is not target port AND target port is closer to fishing ground
+  if( current_port != target_port )[
+
+    ;;; calc distances from both ports to the fishing ground
+
+    let Goal "dummy"
+    ifelse( is-agentset? center_patch )[ set Goal one-of center_patch  ][ set Goal center_patch ]
+
+    ;; from old port
+    let Start ports with [ port_name = original_port ]
+    ask Start [ set Start patch-here ]
+    let delta_outcome deltaX.deltaY.path Start Goal ; calculate distance
+    let dist_oldPort first delta_outcome ; distance in km
+
+    ;; from new port
+    set Start ports with [ port_name = target_port ]
+    ask Start [ set Start patch-here ]
+    set delta_outcome deltaX.deltaY.path Start Goal ; calculate distance
+    ; calculate steaming distance, assuming each grid cell (netlogo) distance 5km
+    let dist_newPort first delta_outcome ; distance in km
+
+    ;; continue if the new port is closer AND if there is a path from the port, other wise stay at old port
+    if( dist_newPort < dist_oldPort )[
+      
+      ; set start and goal patch
+      set Start ports with [ port_name = original_port ]
+      ask Start [ set Start patch-here ]
+      set Goal ports with [ port_name = target_port ]
+      ask Goal [ set Goal patch-here ]
+      
+      ; calculate distance
+      set delta_outcome deltaX.deltaY.path Start Goal 
+      
+      ; calculate steaming distance, assuming each grid cell (netlogo) distance 5km
+      ; for vessel transfer we assume a steaming speed of 13km/h for all vessels
+      set transfer_time (first delta_outcome / 13)
+      
+      ; calc fuel costs and subtract from savings
+      let transfer_fuel (transfer_time * (3.976 + 0.236 * engine_kw) * 0.8)
+      let transfer_costs transfer_fuel * curr_price_fuel
+      set savings savings - transfer_costs
+           
+      ; move to target_port
+      set current_port target_port ; this is vessel state variable
+      set transferred? (word last day_ch ": " original_port " - " target_port)
+      
+      ; if the transfer time is shifting the departure time to the next day or the trip length is below 6 hours, indicate that in target_FishGro
+      let new_start_date time:plus (time:create start_date) transfer_time "hours"
+      set curr_trip_length time:difference-between new_start_date end_date "days"
+      set new_start_date time:show new_start_date "yyyy-MM-dd"
+      if( time:difference-between new_start_date day "day" < 0 or curr_trip_length < 0.25 )[
+        set target_FishGro "STOP: vessel transfer"
+        set status (list "transfer" new_start_date )
+      ]
+      
+  ] ; shorter than from old port end
+]; same port end
+
+  ; save whether transfer happened or not
+  set list_transfer lput transferred? list_transfer
+
+  ; output
+  report transfer_time
+
+end
+
+;; calculate path from current port to fishing ground ;;;
+; also calculate steaming and fishing times
+
+to-report option.calc.path [ option transfer_time ]
+
+  ;;; get individual variables from option
+  let w_FishGro item 0 option
+  let pred_profit_day item 1 option
+  let start_date item 2 option
+  let end_date item 3 option
+  let center_patch item 4 option
+  let m_kgs item 5 option
+  let m_specs item 6 option
+  let m_fishing_time item 7 option
+  let m_trip_days item 8 option
+  let m_engine_steps item 9 option
+  let m_trip_ID item 10 option
+  let uncertainty item 11 option
+  let num_searches item 13 option
+  let trip_patches item 14 option
+  let num_patches item 15 option
+  let w_gear substring w_FishGro 0 3
+
+  ;;; if there was a vessel transfer update times
+  if (transfer_time > 0) [
+
+    set start_date time:plus (time:create start_date) transfer_time "hours"
+    set curr_trip_length time:difference-between start_date end_date "days"
+    set start_date time:show  start_date "yyyy-MM-dd HH:mm:ss"
+
+  ] 
+
+  ; calculate steaming distance
+
+  ; set start and goal patch
+  let w_port current_port
+  let Start ports with [ port_name = w_port ]
+  ask Start [ set Start patch-here ]
+  let Goal "dummy"
+  ifelse( is-agentset? center_patch )[ set Goal one-of center_patch  ][ set Goal center_patch ]
+  
+  ; calculate distance
+  let delta_outcome deltaX.deltaY.path Start Goal
+  
+  ; determine steaming speed
+  let steaming_speed last last filter [ i -> item 1 i = engine_kw_step and item 0 i = w_gear ] steaming_speeds
+  
+  ; calculate steaming distance, assuming each grid cell (netlogo) distance 5km
+  let steam_time (first delta_outcome / steaming_speed) * 2                          ; time for steaming to fishing ground and back. 
+  set steam_time steam_time + ((num_searches * 9) / steaming_speed)                 ; steaming time for avoiding crowded areas. Every search trial is assumed to be equivalent to the mean distance of two patches
+  
+  ;; add steaming time for in between fishing events (per trip day)
+  
+  ; get median and sd for right metier
+  let stats_inBetween first filter[ i -> member? w_FishGro i ] inBetween_steam
+  set stats_inBetween map [ a -> item (position a first inBetween_steam) stats_inBetween ] ["inBetween_steam_day_median" "inBetween_steam_day_sd"]
+  
+  ; draw random number from distribution for each trip day except the first one
+  let add_steam []
+  let ceiling_days ceiling curr_trip_length
+  repeat ceiling_days [ set add_steam fput (random-normal first stats_inBetween last stats_inBetween) add_steam ]
+  set add_steam map [ a -> ifelse-value( a < 0 )[0][a] ] add_steam
+  set add_steam replace-item (length add_steam - 1) add_steam (last add_steam * (1 - (floor curr_trip_length - (curr_trip_length - 1))) )
+  set add_steam sum add_steam
+  set steam_time steam_time + add_steam
+  
+  ;;; calculate total and relative fishing time
+  let fishing_time ((curr_trip_length * 24) - steam_time)
+  let rel_fishing_time fishing_time / (curr_trip_length * 24)
+  
+  ;;; if there is not enought time (fishing time relatively too small for the trip length), insert STOP variable and update remaining_options
+  ifelse( rel_fishing_time < .2 or fishing_time <= 0 )
+  [
+    set target_FishGro "STOP: steaming too long"
+    ; output
+    report []
+  ][
+    
+    ; output
+    report (sentence w_FishGro pred_profit_day start_date end_date center_patch num_searches steam_time fishing_time m_fishing_time m_engine_steps (list m_kgs) (list m_specs) uncertainty m_trip_ID trip_patches num_patches)
+    
+  ] ; end steaming too long
+  
+end
+
+;; this procedure is called once its clear that a fishing option can be realized ;;;
+; model catches, revenues, and profits
+
+to go.fishing [ option ]
+
+  ; get single variables from option
+  set target_Fishgro item 0 option
+  let pred_profit_day item 1 option
+  let start_date item 2 option
+  let end_date item 3 option
+  let center_patch item 4 option
+  let num_searches item 5 option
+  let steam_time item 6 option
+  let fishing_time item 7 option
+  let m_fishing_time item 8 option
+  let m_engine_steps item 9 option
+  let m_kgs item 10 option
+  let m_specs item 11 option
+  let uncertainty item 12 option
+  let m_trip_ID item 13 option
+  let trip_patches item 14 option
+  let num_patches item 15 option
+  let w_gear substring target_Fishgro 0 3
+
+  ; calculate new CPUEs based on kw days
+  let diff_kw_steps ( engine_kw_step - m_engine_steps )
+  let NEWcpues map [ a -> (a / m_fishing_time) ] m_kgs
+  if( diff_kw_steps != 0 )[ set NEWcpues map [ a -> a + (a * (CPUE_coefficient * diff_kw_steps)) ] NEWcpues ]
+
+   ; obscure CPUEs using uncertainty (from euclidean distance) and calculate new catches
+  let CPUE_uncertainty uncertainty * CPUE_uncertainty_multiplier
+  set NEWcpues map [a -> a * (1 + (random-float CPUE_uncertainty * 2 - CPUE_uncertainty)) ] NEWcpues
+
+  ; Adjust CPUEs according to depletion coefficient
+  let mean_depl_coeff "dummy"
+  if ( fish_depletion != 0 )[
+    set mean_depl_coeff mean [ depletion_coeff ] of trip_patches
+    if( mean_depl_coeff > 1 )[ error "Depletion coefficient is above 1" ]
+    set NEWcpues map [a -> a * mean_depl_coeff ] NEWcpues
+  ]
+
+  ; calculate catches
+  let new_kg map [ a -> precision (a * fishing_time) 2 ] NEWcpues
+  set new_kg map [ a -> ifelse-value ( a < 0 ) [ 0 ] [ a ] ] new_kg
+
+  ; check whether new catches exceed catch volume
+  ; if so adjust trip_days, end_date, and new_catch, to the maximum amount of catch
+  if( sum(new_kg) > max_catch )[
+
+    let cpue sum(new_kg) / fishing_time
+    let subtr_hours 1
+    while [ (sum(new_kg) - (cpue * subtr_hours)) > max_catch ]
+    [ set subtr_hours subtr_hours + 1 ]
+
+    set fishing_time fishing_time - subtr_hours
+    set curr_trip_length ((fishing_time + steam_time) / 24 )
+    set end_date time:show time:plus (time:create start_date) curr_trip_length "days" "yyyy-MM-dd HH:mm:ss"
+    set new_kg map [ a -> precision (a * fishing_time) 2 ] NEWcpues
+    set new_kg map [ a -> ifelse-value ( a < 0 ) [ 0 ] [ a ] ] new_kg
+
+  ]
+
+  ; get prices for species (based on current month)
+  ; select fish prices for the right month
+  let w_pos (position "month" res_prices_colnames)
+  let w_pos2 (position "spec" res_prices_colnames)
+  let w_pos3 (position "price" res_prices_colnames)
+  let res_prices_trip map [ a -> filter [ b -> member? a b ] curr_price_all ] m_specs
+  
+    ; code functionality
+  ; check whether there are missing price information
+  if( member? true map[ a -> empty? a ] res_prices_trip )[
+    show "price info:" show res_prices_trip show "species: " show m_specs
+    error "Missing price information"
+  ]
+
+  ; calculate new revenues
+  let new_revenue (map [ [a b] -> precision ( a * item w_pos3 first b ) 2 ] new_kg res_prices_trip )
+
+  ; aggregate kg and eur for all species that go into Other
+  let rel_spec map [ a -> member? a species_order ] m_specs
+  set w_pos all.position rel_spec false
+  if( length w_pos > 0 )[
+    set new_kg lput (precision sum ( map[ a -> item a new_kg ] w_pos ) 2) new_kg
+    set new_revenue lput (precision sum ( map[ a -> item a new_revenue ] w_pos ) 2) new_revenue
+    set m_specs lput "Other" m_specs
+  ]
+  set rel_spec map [ a -> member? a species_order ] m_specs
+
+  ; only select relevant species in new_kg, new_revenue, and trip_spec
+  set w_pos all.position rel_spec true
+  set new_kg map [ a -> item a new_kg ] w_pos
+  set new_revenue map [ a -> item a new_revenue ] w_pos
+  let spec map [ a -> item a m_specs ] w_pos
+
+  ; add missing species
+  let miss_spec map [ a -> member? a spec ] species_order
+  set miss_spec all.position miss_spec false
+  if( length miss_spec > 0 )[
+    set miss_spec map [ a -> item a species_order ] miss_spec
+    set spec (sentence spec miss_spec)
+    repeat (length miss_spec) [
+      set new_kg lput 0 new_kg
+      set new_revenue lput 0 new_revenue
+    ]
+  ]
+
+  ; order new_catch and new_revenue according to species_order
+  set new_kg map [ a -> item (position a spec) new_kg ] species_order
+  set new_revenue map [ a -> item (position a spec) new_revenue ] species_order
+
+  ; calc fuel usage
+  ; if gear is PUL than the fuel consumption is half as much (Turenhout et al. 2016)
+  ; if gear is FPO is set to 0.7 (assumption) (Davie et al. 2015)
+  let new_fuel (steam_time * (3.976 + 0.236 * engine_kw) * 0.8)
+  ifelse( w_gear = "PUL" or w_gear = "FPO" )
+  [
+    if( w_gear = "PUL" ) [ set new_fuel precision ( new_fuel + (fishing_time * (3.976 + 0.236 * engine_kw) ) * 0.5 ) 2 ]
+    if( w_gear = "FPO" ) [ set new_fuel precision ( new_fuel + (fishing_time * (3.976 + 0.236 * engine_kw) ) * 0.7 ) 2 ]
+  ]
+  [ set new_fuel precision ( new_fuel + (fishing_time * (3.976 + 0.236 * engine_kw) ) ) 2 ]
+
+
+  ; calc other costs (based on STECF)
+  let STECF_info (id.STECF VE_REF target_FishGro)
+  let cost_temp (item 1 STECF_info) * curr_trip_length
+  let depreciations (item 2 STECF_info) * curr_trip_length
+
+  ; add vessel to German ves num and patch ids to trip variable
+  ask trip_patches [ set ger_ves_num ger_ves_num + 1 ]
+
+  ; if local depletion is activated, decrease CPUE coefficients of fished cells
+  if( fish_depletion != 1 )[ ask trip_patches[
+    set depletion_coeff depletion_coeff * fish_depletion ]
+    if( depletion_coeff > 1 )[ set depletion_coeff 1 ]
+  ]
+
+  ; set status to fishing and change color
+  set status "fishing"
+  set color blue
+
+  ; if necessary, convert center_patch to single agent
+  if( is-agentset? center_patch )[ set center_patch one-of center_patch ]
+  
+  ; send vessel to fishing ground
+  move-to center_patch
+  
+  ; paint fished patches blue
+  ask trip_patches [ set pcolor blue ]
+  
+  ; save trip patch-agent set in temporary helper variable and trip IDs in
+  set last_trip_patches trip_patches
+
+  ; add memory (the order is important!)
+  set list_catch lput new_kg list_catch
+  set list_eur lput new_revenue list_eur
+  set list_fuel lput new_fuel list_fuel
+  set list_trip_days lput curr_trip_length list_trip_days
+  set list_FishGro lput target_FishGro list_FishGro
+  set list_gears lput substring target_FishGro 0 3 list_gears
+  set list_first_day lput start_date list_first_day
+  set list_tripDays_delMem lput time:create (word time:show day_ongoing "YYYY" substring start_date 4 19) list_tripDays_delMem
+  set list_last_day lput end_date list_last_day
+  set list_matched_ID lput m_trip_ID list_matched_ID
+  set list_uncertainty lput uncertainty list_uncertainty
+  set list_landing_port lput current_port list_landing_port
+
+  set list_num_searches lput num_searches list_num_searches
+  set list_num_patches lput num_patches list_num_patches
+  set list_center_ID lput [dummy_ID] of center_patch list_center_ID
+  set list_center_agent lput center_patch list_center_agent
+  set list_steam_time lput steam_time list_steam_time
+  set list_fish_time lput fishing_time list_fish_time
+  set list_trip_patch_ids lput ([dummy_ID] of trip_patches) list_trip_patch_ids
+  set list_mean_depl_coeff lput mean_depl_coeff list_mean_depl_coeff
+
+  set list_pred_profit_day lput pred_profit_day list_pred_profit_day
+  set list_perc_bT_trip lput (last list_perc_bottomT) list_perc_bT_trip
+
+  set list_profit lput ( sum(last list_eur) - (last list_fuel * curr_price_fuel) - cost_temp ) list_profit
+  set list_profit_day lput ( last list_profit / curr_trip_length ) list_profit_day
+  set list_depreciations lput depreciations list_depreciations
+  set list_primary_spec lput ( item ( position (precision max last list_catch 4) (map[ [c] -> precision c 4 ] last list_catch) ) species_order ) list_primary_spec
+  set savings savings + last list_profit
+  
+  ;; determing whether vessel needs repair after this trip
+  if( probability_need_repair > 0 )[
+    set need_repair ifelse-value( random-float 1 <= probability_need_repair  )[ 0 ][ false ]
+  ]
+  
+  ;; update helper consumat lists (because they should have the same length than the number of trips)
+  
+  ;; update helper consumat lists (because they should have the same length than the number of trips)
+  ifelse( count (curr_peers) = 0 )[
+    ; if there are no peers, indicate this in lists
+    set list_meanProfit_peers lput "no peers" list_meanProfit_peers
+    set list_primeSpec_peers lput "no peers" list_primeSpec_peers
+    set list_gears_peers lput "no peers" list_gears_peers
+  ][
+    ; if there are peers, fill lists
+    set list_meanProfit_peers lput (mean [ last list_profit_day ] of curr_peers) list_meanProfit_peers     ; mean peer profit
+    set list_gears_peers lput (remove-duplicates [ last list_gears ] of curr_peers) list_gears_peers       ; gears of peers
+    set list_primeSpec_peers lput (remove-duplicates [ last list_primary_spec ] of curr_peers) list_primeSpec_peers       ; prime species of peers
+  ]
+  
+end
+
+;;; send a vessel to port and update state variables (must be called in a ask vessels loop) ;;;
+
+to vessel.to.port
+
+  ; note this must be called within vessel loop
+
+  if ( status = "fishing" )[
+    
+    set status "in-port"
+    let aim_port current_port
+    move-to one-of ports with [ port_name = aim_port ]
+    set color yellow
+
+    ; substract ger vessel num from trip patches
+    ask last_trip_patches [
+      set ger_ves_num ger_ves_num - 1
+    ]
+
+    ; add trip catches to global catches
+    set global_ple (global_ple + (item (position "PLE" species_order) last list_catch / 1000) )
+    set global_sol (global_sol + (item (position "SOL" species_order) last list_catch / 1000) )
+    set global_tur_bll (global_tur_bll + ((item (position "TUR" species_order) last list_catch + item (position "BLL" species_order) last list_catch) / 1000) )
+    set global_nep (global_nep + (item (position "NEP" species_order) last list_catch / 1000) )
+    set global_csh (global_csh + (item (position "CSH" species_order) last list_catch / 1000) )
+    set global_cod (global_cod + (item (position "COD" species_order) last list_catch / 1000) )
+    set global_other (global_other + (item (position "Other" species_order) last list_catch / 1000))
+
+    ; subtract trip catches from individual vessel quotas
+    if( member? "NEP" fish_licence)[ set quota_year_nep quota_year_nep - (item (position "NEP" species_order) last list_catch / 1000) ]
+    if( member? "SOL" fish_licence)[ set quota_quarter_sol quota_quarter_sol - (item (position "SOL" species_order) last list_catch / 1000) ]
+    if( member? "PLE" fish_licence)[ set quota_year_ple quota_year_ple - (item (position "PLE" species_order) last list_catch / 1000) ]
+
+    ; reset trip variables
+    set curr_trip_length 0
+    set trip_days 0
+    
+    ; if the rest of the week should be inactive insert STOP reason in target_FishGro
+    if( active_week = false )[ set target_FishGro "STOP: inactive week" ]
+
+  ]
+
+end
+
+;;; keep fishers decision: To which fishing ground to they go (or cannot) or are they currently fishing (daily resolution) ;;;
+; this is done in the end of each iteration and only important for model evaluation
+
+to save.decision
+
+  ask vessels [
+    
+    ; why did not got out fishing? -> save stop_reason
+    ifelse( member? "STOP:" target_FishGro )[ set list_decision lput target_FishGro list_decision ]
+    [
+      ; on a fishing trip -> save fishing ground
+      ifelse( status = "fishing" )[ set list_decision lput target_FishGro list_decision ]
+      [
+        ; just returned from trip, still enter fishing ground
+        if( status = "in-port" and not member? "STOP:" target_FishGro )[ set list_decision lput target_FishGro list_decision ]
+    ]]
+    
+    ; save also daily status of saving
+    set list_savings lput savings list_savings
+
+  ]
+
+end
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;; HELPER FUNCTIONS WHICH ARE NESTED IN MAIN FUNCTIONS ;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;;; create a euclidean distance matrix
+; range-normalization performed within this function
+
+to-report euclidean.distance.matrix [ col_list w_index ]
+
+  ; check whether all elements (columns) have the same length (number of rows)
+  let nrow remove-duplicates (map [ a -> length a ] col_list)
+  if( length nrow != 1 )[ error "EUC DM: The elements do not have the same length" ]
+
+  ; convert w_index to list (if single value)
+  if( is-list? w_index = false )[ set w_index (list w_index) ]
+
+  ; standardize values within the elements (columns)
+  ; do not range standardize for columns that have all the same values, since this would cause an error
+  ; in that case, set whole column to 0.5. This might occur for the engine_kw_steps
+  set col_list map [ a -> range.01 a ] col_list
+
+  ; calc distances
+  let row_index n-values (first nrow) [i -> i]
+  let col_index n-values (length col_list) [i -> i]
+
+  let ks "dummy"
+  let out_list []
+  foreach w_index [ j ->
+    set ks row_index
+    set out_list lput
+    map [ k ->
+      sqrt sum map [ i ->
+        ( (item j (item i col_list)) - (item k (item i col_list)) ) ^ 2
+      ] col_index
+    ] ks
+    out_list
+  ]
+
+  report out_list
+
+end
+
+;;; algorythm to calculate path between destination and goal patch faster and more precise
+to-report deltaX.deltaY.path [ start goal ]
+
+  let steps_X "dummy"
+  let steps_Y "dummy"
+  let steps_diagonal "dummy"
+  let delta_distance "dummy"
+  let deltaX abs ([pxcor] of goal - [pxcor] of start)
+  let deltaY abs ([pycor] of goal - [pycor] of start)
+  ifelse( deltaX >= deltaY )
+  [ set steps_Y 0
+    set steps_X deltaX - deltaY
+    set steps_diagonal deltaY  ]
+  [ set steps_X 0
+    set steps_Y deltaY - deltaX
+    set steps_diagonal deltaX  ]
+  set delta_distance precision ((steps_X * 2.914) + (steps_Y * 5.009) + (steps_diagonal * 5.796)) 3
+  report (list delta_distance steps_X steps_Y steps_diagonal)
+
+end
+
+;;; function to model vessel movement while fishing using lévy flights ;;;
+to-report fishing.movement [ start_patch radius_patches max_patches FishGro_spatial_name w_engine_kw ]
+
+  ; set up parameters
+  let curr_num_patches 1
+  let alpha 2
+  let minstep 1
+  let trip_patches (list [dummy_ID] of start_patch)
+  let w_gear substring target_Fishgro 0 3
+  let neighbor_patches "dummy"
+  let c_dist "dummy"
+  let head "dummy"
+  let new_patch "dummy"
+
+  ; if necessary convert start patch to single agent
+  if( is-agentset? start_patch )[ set start_patch one-of start_patch ]
+
+  ; starting loop to model fishing movement
+  let w_patch start_patch
+  while[ curr_num_patches < max_patches ][
+
+    ;;; determing distance in cells using lévy flights
+    let dist round ( minstep * ((random-float (1 - .01)) + .01) ^ (-1 / alpha) )
+
+    ;;; check if there are any suitable neighbor patches.
+    ; remove fishing restrictions (including plaice box for PUL or TBB gears with and engine power > 221kw), patches that are not passable and those than have already been used
+    ask w_patch [ set neighbor_patches neighbors ]
+    ifelse( (w_gear = "TBB" or w_gear = "PUL") and w_engine_kw > 221 )
+    [ set neighbor_patches neighbor_patches with [ not member? "plaice_box" spat_restr and member? FishGro_spatial_name FishGro and fishable? = true and passable? = true and not member? dummy_ID trip_patches ] ]
+    [ set neighbor_patches neighbor_patches with [ member? FishGro_spatial_name FishGro and fishable? = true and passable? = true and not member? dummy_ID trip_patches ] ]
+
+    ; If there are no suitable neighbor patches, search in given radius patches for new center patch.
+    ; These search trials count as fished patches
+    ; If there are no more suitable patches left in radius, leave loop
+    while[ count neighbor_patches = 0 ][
+      set w_patch radius_patches with [ not member? dummy_ID trip_patches ]
+      ifelse( count w_patch = 0 )
+      [ ; in case there are no more suitable fishing patches leave loop and function
+        set curr_num_patches max_patches
+        set c_dist dist
+        set neighbor_patches patch-set one-of patches
+        let rand_ID [dummy_ID] of neighbor_patches
+      ]
+      [
+        set w_patch one-of w_patch
+        set trip_patches lput ([dummy_ID] of w_patch) trip_patches
+        set curr_num_patches curr_num_patches + 1
+        ask w_patch [ set neighbor_patches neighbors ]
+        ifelse( (w_gear = "TBB" or w_gear = "PUL") and w_engine_kw > 221 )
+        [ set neighbor_patches neighbor_patches with [ not member? "plaice_box" spat_restr and member? FishGro_spatial_name FishGro and fishable? = true and passable? = true and not member? dummy_ID trip_patches ] ]
+        [ set neighbor_patches neighbor_patches with [ member? FishGro_spatial_name FishGro and fishable? = true and passable? = true and not member? dummy_ID trip_patches ] ]
+      ]
+    ]; end no suitable neighbor patches
+
+    ;;; determine heading and move to new patch
+    if( curr_num_patches < max_patches )[
+      set new_patch one-of neighbor_patches
+      set head (list ([pxcor] of new_patch - [pxcor] of w_patch) ([pycor] of new_patch - [pycor] of w_patch) )
+      set w_patch new_patch
+      set trip_patches lput ([dummy_ID] of w_patch) trip_patches
+      set curr_num_patches curr_num_patches + 1
+      set c_dist 1
+    ]
+
+    ; if distance is more than one cell, move in the same direction until the distance is reach or the agent cant fish further in that direction
+    ; or the maximum number of cells is reached
+    while[ c_dist < dist and curr_num_patches < max_patches ][
+
+      let new_xcor [pxcor] of w_patch + first head
+      let new_ycor [pycor] of w_patch + last head
+      set new_patch one-of patches with [pxcor = new_xcor and pycor = new_ycor]
+
+      ; if new_patch is empty, it was likely out of the scope of the map. Set dist to c_dist to leave
+      ; current while loop and try new direction and dist step
+      ifelse( is-patch? new_patch = false )[
+        set dist c_dist
+      ][
+
+        ; check whether next patch is suitable for fishing
+        let possible_move true
+        ask new_patch[
+          ifelse( passable? = false or fishable? = false or not member? FishGro_spatial_name FishGro or member? dummy_ID trip_patches  )
+          [ set possible_move false ]
+          [ if( member? "plaice_box" spat_restr )[ if( (w_gear = "TBB" or w_gear = "PUL") and w_engine_kw > 221 )[ set possible_move false ]] ]
+        ]
+
+        ; if next patch is suitable for fishing move,
+        ; otherwise try a different direction
+        ifelse( possible_move )[
+
+          set c_dist c_dist + 1
+          set curr_num_patches curr_num_patches + 1
+          set w_patch new_patch
+          set trip_patches lput ([dummy_ID] of w_patch) trip_patches
+
+        ][
+          set c_dist dist ; leave current loop to find new direction
+        ]
+
+      ]; empty patch
+    ] ; end moving in one direction
+  ] ; end maximum patches reached
+
+  ; convert trip patch IDs to agentset
+  set trip_patches patches with [ member? dummy_ID trip_patches ]
+
+  ; output
+  report trip_patches
+
+end
+
+;;; function to choose the right averaged wave height data set, according to given metier (used to get weather forecast for fishers) ;;;
+
+to-report get.met.swh.data [ metier ]
+
+  ifelse( metier = "OTB - NEP&PLE" )
+  [ report swh_year_OTB-NEP&PLE ]
+  [ ifelse( metier = "OTB - PLE" )
+    [ report swh_year_OTB-PLE ]
+    [ ifelse( metier = "PUL - CSH" )
+      [ report swh_year_PUL-CSH ]
+      [ ifelse( metier = "TBB - CSH" )
+        [ report swh_year_TBB-CSH ]
+        [ ifelse( metier = "PUL - PLE&SOL" )
+          [ report swh_year_PUL-PLE&SOL ]
+          [ ifelse( metier = "TBB - PLE&SOL" )
+            [ report swh_year_TBB-PLE&SOL ]
+            [ ifelse( metier = "PUL - SOL&PLE" )
+              [ report swh_year_PUL-SOL&PLE ]
+              [ ifelse( metier = "TBB - SOL&PLE" )
+                [ report swh_year_TBB-SOL&PLE ]
+                [ error "missing metiers" ]
+  ]]]]]]]
+
+end
+
+;;; function to choose the right unique trip data set, according to given metier ;;;
+
+to-report get.met.uni.trip.data [ metier ]
+
+  let out "dummy"
+
+  ; select trips from the right metier and season
+  
+  ; spring
+  if( season = "Spring" )[ 
+    ifelse( metier = "OTB - NEP&PLE" )
+    [ set out uni_trips_OTB-NEP&PLE_spring ]
+    [ ifelse( metier = "OTB - PLE" )
+      [ set out uni_trips_OTB-PLE_spring ]
+      [ ifelse( metier = "PUL - CSH" )
+        [ set out uni_trips_PUL-CSH_spring ]
+        [ ifelse( metier = "TBB - CSH" )
+          [ set out uni_trips_TBB-CSH_spring ]
+          [ ifelse( metier = "PUL - PLE&SOL" )
+            [ set out uni_trips_PUL-PLE&SOL_spring ]
+            [ ifelse( metier = "TBB - PLE&SOL" )
+              [ set out uni_trips_TBB-PLE&SOL_spring ]
+              [ ifelse( metier = "PUL - SOL&PLE" )
+                [ set out uni_trips_PUL-SOL&PLE_spring ]
+                [ ifelse( metier = "TBB - SOL&PLE" )
+                  [ set out uni_trips_TBB-SOL&PLE_spring ]
+                  [ error "missing metiers" ]
+  ]]]]]]] ]
+  
+  ; summer
+  if( season = "Summer" )[ 
+    ifelse( metier = "OTB - NEP&PLE" )
+    [ set out uni_trips_OTB-NEP&PLE_summer ]
+    [ ifelse( metier = "OTB - PLE" )
+      [ set out uni_trips_OTB-PLE_summer ]
+      [ ifelse( metier = "PUL - CSH" )
+        [ set out uni_trips_PUL-CSH_summer ]
+        [ ifelse( metier = "TBB - CSH" )
+          [ set out uni_trips_TBB-CSH_summer ]
+          [ ifelse( metier = "PUL - PLE&SOL" )
+            [ set out uni_trips_PUL-PLE&SOL_summer ]
+            [ ifelse( metier = "TBB - PLE&SOL" )
+              [ set out uni_trips_TBB-PLE&SOL_summer ]
+              [ ifelse( metier = "PUL - SOL&PLE" )
+                [ set out uni_trips_PUL-SOL&PLE_summer ]
+                [ ifelse( metier = "TBB - SOL&PLE" )
+                  [ set out uni_trips_TBB-SOL&PLE_summer ]
+                  [ error "missing metiers" ]
+  ]]]]]]] ]
+  
+  ; fall
+  if( season = "Fall" )[ 
+    ifelse( metier = "OTB - NEP&PLE" )
+    [ set out uni_trips_OTB-NEP&PLE_fall ]
+    [ ifelse( metier = "OTB - PLE" )
+      [ set out uni_trips_OTB-PLE_fall ]
+      [ ifelse( metier = "PUL - CSH" )
+        [ set out uni_trips_PUL-CSH_fall ]
+        [ ifelse( metier = "TBB - CSH" )
+          [ set out uni_trips_TBB-CSH_fall ]
+          [ ifelse( metier = "PUL - PLE&SOL" )
+            [ set out uni_trips_PUL-PLE&SOL_fall ]
+            [ ifelse( metier = "TBB - PLE&SOL" )
+              [ set out uni_trips_TBB-PLE&SOL_fall ]
+              [ ifelse( metier = "PUL - SOL&PLE" )
+                [ set out uni_trips_PUL-SOL&PLE_fall ]
+                [ ifelse( metier = "TBB - SOL&PLE" )
+                  [ set out uni_trips_TBB-SOL&PLE_fall ]
+                  [ error "missing metiers" ]
+  ]]]]]]] ]
+  
+  ; winter
+  if( season = "Winter" )[ 
+    ifelse( metier = "OTB - NEP&PLE" )
+    [ set out uni_trips_OTB-NEP&PLE_winter ]
+    [ ifelse( metier = "OTB - PLE" )
+      [ set out uni_trips_OTB-PLE_winter ]
+      [ ifelse( metier = "PUL - CSH" )
+        [ set out uni_trips_PUL-CSH_winter ]
+        [ ifelse( metier = "TBB - CSH" )
+          [ set out uni_trips_TBB-CSH_winter ]
+          [ ifelse( metier = "PUL - PLE&SOL" )
+            [ set out uni_trips_PUL-PLE&SOL_winter ]
+            [ ifelse( metier = "TBB - PLE&SOL" )
+              [ set out uni_trips_TBB-PLE&SOL_winter ]
+              [ ifelse( metier = "PUL - SOL&PLE" )
+                [ set out uni_trips_PUL-SOL&PLE_winter ]
+                [ ifelse( metier = "TBB - SOL&PLE" )
+                  [ set out uni_trips_TBB-SOL&PLE_winter ]
+                  [ error "missing metiers" ]
+  ]]]]]]] ]
+  
+  ; output
+  report out
+  
+end
+
+;;; function to identify STECF group (for getting fishing costs) ;;;
+
+to-report id.STECF [ ref w_FishGro  ]
+
+  ;; get fishing technique
+  let met_list map [ a -> item 2 a ] STECF_gear_codes
+  let w_pos filter [ a -> member? w_FishGro a ] met_list
+  if( length w_pos = 0 ) [ error "no such metier (in ID_STECF)" ]
+  set w_pos position first w_pos met_list
+  let fish_tech item 0 (item w_pos STECF_gear_codes)
+
+  ;; costs
+  let round_loa round first [LOA] of vessels with [VE_REF = ref]
+  if ( round_loa < 12 or round_loa > 52 ) [ error "vessel smaller than 10m or larger than 52 rounded LOA (in ID_STECF)" ]
+  let cost_temp filter [ a -> member? fish_tech a ] STECF_costs
+  set cost_temp filter [ a -> member? (word round_loa) a ] cost_temp
+  let depreciations item 3 first cost_temp
+  set cost_temp item 2 first cost_temp
+
+  ; output
+  report (list fish_tech cost_temp depreciations)
+
+end
+
+

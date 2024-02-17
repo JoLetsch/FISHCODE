@@ -1,0 +1,742 @@
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;   Functions related to perceiviing, predicting, and choosing behavioral options   ;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+
+;;; percieve fishing options depending on consumat strategy ;;;
+
+to-report perceive.options
+
+  ; needs to be called in vessel loop
+
+  ; dummy
+  let options "dummy"
+
+  ; repeat
+  if( last consumat_strategy = "repetition" )[
+
+   ; own last option
+    set options ifelse-value( length(list_FishGro) > 0 )[ (list last list_FishGro) ][ (list default_metier) ]
+  ]
+
+  ; imitate
+  if( last consumat_strategy = "imitation" )[
+
+    ; get last actions from peers and the agent's own last action
+    let cur_peers (turtle-set curr_peers self)
+    set options ifelse-value( length([ list_FishGro ] of cur_peers) > 0 )[ remove-duplicates [ last list_FishGro ] of cur_peers ][ (list default_metier) ]
+  ]
+
+  ; deliberate
+  if( last consumat_strategy = "deliberation")[
+
+    ; hardcoded deliberation options
+    set options deliberate_options
+  ]
+
+  ; inquire
+  if( last consumat_strategy = "inquiring")[
+
+    ; get last actions from peers, extended peers, and all actions from vessel's own memory
+    let cur_peers (turtle-set curr_peers curr_ext_peers self)
+    set options ifelse-value( length([ list_FishGro ] of cur_peers) > 0 )[ remove-duplicates [ last list_FishGro ] of cur_peers ][ (list default_metier) ]
+    set options remove-duplicates sentence options list_FishGro
+  ]
+
+  ; convert options into a list
+  set options map [ a -> (list a) ] options
+
+  ; report options
+  if( is-list? options = false )[ set options (list options) ]
+  report( options )
+
+end
+
+;;; filter perceived fishing options for available gears, licenses and quotas ;;;
+
+to-report check.gear.license.quota.seasons [ options ]
+
+  ; filter for available gears
+  if( not member? "TBB" avail_gears )[ set options filter [ a -> not member? "TBB" first a ] options ]
+  if( not member? "OTB" avail_gears )[ set options filter [ a -> not member? "OTB" first a ] options ]
+  if( not member? "OTM" avail_gears )[ set options filter [ a -> not member? "OTM" first a ] options ]
+  if( not member? "GNS" avail_gears )[ set options filter [ a -> not member? "GNS" first a ] options ]
+  if( not member? "PUL" avail_gears )[ set options filter [ a -> not member? "PUL" first a ] options ]
+  if( length options = 0)[ set target_FishGro "STOP: no suiting gear" ]                                        ; insert stop reason
+
+  ; filter for licences
+  if( length options > 0 )[
+    if( not member? "NEP" fish_licence )[ set options filter [ a -> not member? "NEP" first a ] options ]
+    if( not member? "SOL" fish_licence )[ set options filter [ a -> not member? "SOL" first a ] options ]
+    if( not member? "COD" fish_licence )[ set options filter [ a -> not member? "COD" first a ] options ]
+    if( length options = 0)[ set target_FishGro "STOP: no suiting license" ]                                    ; insert stop reason
+  ]
+
+  ; remove fishing grounds that are unsuitable (due to spatial restrictions)
+  if( length options > 0 )[
+    set options filter [ a -> not member? first a NoGo_FishGros ] options
+    if( length options = 0)[ set target_FishGro "STOP: spatial restrictions" ]                                   ; insert stop reason
+  ]
+
+;  ; filter for seasons
+;  if( length options > 0 )[
+;    let moy read-from-string time:show day "MM"
+;
+;    ; first remove options not possible in december
+;    ifelse( member? moy [ 12 ] )[
+;      set options filter [ a -> not member? "CSH" first a ] options
+;      set options filter [ a -> not member? "SOL&PLE" first a ] options
+;      ; set options filter [ a -> not member? "GNS - SOL" first a ] options
+;      set options filter [ a -> not member? "OTB" first a ] options
+;    ][
+;      ; remove options not possible in january and february
+;      ifelse( member? moy [ 1 2 ] )[
+;        set options filter [ a -> not member? "CSH" first a ] options
+;        set options filter [ a -> not member? "NEP" first a ] options
+;        set options filter [ a -> not member? "SOL&PLE" first a ] options
+;        ; set options filter [ a -> not member? "GNS - SOL" first a ] options
+;      ][
+;        ; remove options from november
+;        ifelse( member? moy [ 11 ] )[
+;          set options filter [ a -> not member? "SOL&PLE" first a ] options
+;          ; set options filter [ a -> not member? "GNS - SOL" first a ] options
+;        ][
+;;          ; remove options from summer & september
+;;          ifelse( member? moy [ 6 7 8 9 ] )[
+;;            set options filter [ a -> not member? "COD" first a ] options
+;;          ][
+;            ; remove options from march
+;            ifelse( member? moy [ 3 ] )[
+;              set options filter [ a -> not member? "NEP" first a ] options
+;              set options filter [ a -> not member? "SOL&PLE" first a ] options
+;              ; set options filter [ a -> not member? "COD" first a ] options
+;            ][
+;              ; remove options from april
+;              ifelse( member? moy [ 4 ] )[
+;                set options filter [ a -> not member? "NEP" first a ] options
+;                ; set options filter [ a -> not member? "COD" first a ] options
+;              ][
+;;                ; remove options from may
+;;                if( member? moy [ 5 ] )[
+;;                  set options filter [ a -> not member? "COD" first a ] options
+;    ]]]]] ; seasons' ifelse end
+;
+;    if( length options = 0)[ set target_FishGro "STOP: not right season" ]                                    ; insert stop reason
+;
+;  ]
+
+  ; filter for available global quotas
+  if( length options > 0 )[
+    if( quota_ple - global_ple <= 0 )[ set options filter [ a -> not member? "PLE" first a ] options ]
+    if( quota_sol - global_sol <= 0 )[ set options filter [ a -> not member? "SOl" first a ] options ]
+    if( quota_nep - global_nep <= 0 )[ set options filter [ a -> not member? "NEP" first a ] options ]
+    if( quota_cod - global_cod <= 0 )[ set options filter [ a -> not member? "COD" first a ] options]
+
+    ; filter for available individual quotas
+    if( quota_quarter_sol <= 0 )[ set options filter [ a -> not member? "SOl" first a ] options ]
+    if( quota_year_nep <= 0 )[ set options filter [ a -> not member? "NEP" first a ] options ]
+    if( quota_year_cod <= 0 )[ set options filter [ a -> not member? "COD" first a ] options ]
+    if( quota_year_ple <= 0 )[ set options filter [ a -> not member? "PLE" first a ] options ]
+
+    if( length options = 0)[ set target_FishGro "STOP: quota exhausted" ]                                     ; insert stop reason
+  ]
+
+  ; report options
+  report( options )
+
+end
+
+;;; estimate trip length restricted by weekends ;;;
+
+to restrict.trip.length.weekend 
+  
+  ; note that this function needs to be called in a vessel loop
+  
+  let weekdays "dummy"
+  let trip_length "dummy"
+  let w_pos "dummy"
+  
+  ; get weekdays for the potential trip days
+  set weekdays ifelse-value( curr_trip_length <= 1 )[ [0] ][ n-values ceiling curr_trip_length  [ i -> i ] ]
+  set weekdays map [ a -> time:plus day a "days" ] weekdays
+  if( time:is-after? last weekdays time:create model_end_date )[
+    set w_pos position model_end_date map [ a -> time:show a "yyyy-MM-dd" ] weekdays
+    set weekdays sublist weekdays 0 (w_pos + 1)
+  ]
+  set weekdays map [ a -> time:get "dayofweek" a  ] weekdays  
+  
+  ; if it is saturday or sunday, dont go out 
+  ifelse ( item 0 weekdays = 6 or item 0 weekdays = 7 )
+  [
+    set target_FishGro "STOP: weekend"
+  ][
+    ; if the vessel intends to do a multi-day trip and it is already thursday or friday, then dont go out anymore
+    ifelse( time:get "dayofweek" day >= 4 and curr_trip_length >= 2 )[
+      set target_FishGro "STOP: weekend"  
+    ][  
+      ; if the trip would last over the weekend, end it on Friday
+      if ( member? 5 weekdays and curr_trip_length > 1 )[
+        set w_pos position 5 weekdays
+        set trip_length length (range 0 (w_pos + 1) 1)
+        set curr_trip_length trip_length
+  ]]]     
+
+end
+
+;;; estimate trip length restricted by weather ;;;
+
+to-report restrict.trip.wave.height [ options ]
+  
+  ; note that this function needs to be called in a vessel loop
+  
+  let curr_swh "dummy"
+  let weekdays "dummy"
+  let trip_length "dummy"
+  let stop_reason "dummy"
+  let out_options []
+  let w_pos "dummy"
+  let w_pos2 "dummy"
+  
+  foreach options [ a ->
+    
+    let w_FishGro first a
+    
+    ; get wave height in meters (swh) from the current day until the day of the potential end (using the determined trip length)
+    set curr_swh get.met.swh.data w_FishGro
+    set w_pos2 (position "date" all_swh_colnames)
+    set w_pos (position last day_ch map [ b -> item w_pos2 b ] curr_swh)
+    set w_pos (range w_pos (w_pos + ceiling curr_trip_length) 1)
+    
+    ; in case the potential trip end is beyond the end of the model run (end of year) limit it to the last day of the year
+    if ( max w_pos > (length curr_swh) - 1 )[
+      set w_pos (position last day_ch map [ b -> item w_pos2 b ] curr_swh)
+      set w_pos (range w_pos (length curr_swh - 1) 1)
+    ]
+    set curr_swh map [ b -> item b curr_swh ] w_pos
+    
+    ; in case the whole trip is beyond the temporal scope of the model run, insert stop reason
+    ifelse( length curr_swh = 0 )
+    [
+      set trip_length 0
+      set stop_reason "STOP: no data"
+    ][      
+      ; restrict weather
+      if ( empty? curr_swh = false and length curr_swh > 1 )[
+        set w_pos2 (position "swh" all_swh_colnames)
+        set w_pos map [ b -> item w_pos2 b > swh_thresh ] curr_swh          ; check if current wave height in the respective fishing ground (metier) during the days of the anticipated trip is larger than the swh threshold of the vessel
+        if ( member? true w_pos )[
+          set w_pos position true w_pos
+          set w_pos (range 0 (w_pos) 1)
+          set curr_swh map [ b -> item b curr_swh ] w_pos
+          set stop_reason "STOP: bad weather"
+      ]]
+      
+      ; get trip length
+      ifelse ( empty? curr_swh )
+      [ set trip_length 0 ]
+      [ set trip_length min (list length curr_swh curr_trip_length) ]
+    
+  ]
+  
+  ; add to output list if the trip length is longer than 0
+  if( trip_length > 0 )[
+    set out_options lput (sentence w_FishGro trip_length stop_reason) out_options
+  ]
+  
+]; foreach end
+
+if( length out_options = 0 )[ set target_FishGro stop_reason ]
+
+; output
+report out_options
+
+end
+
+;;; wrapper function to get predictions on all fishing options ;;;
+
+to-report predict.options [ options ]
+
+  ; needs to be called in vessel loop
+
+  ; create some dummy variables (necessary, because they are in if-conditions)
+  let memory_ranking "dummy"
+  let available_options "dummy"
+  let predictions "dummy"
+  let w_ves "dummy"
+  let w_pos "dummy"
+
+  ; depending on the consumat strategy, rank whether fishing outcomes should first be predicted using own or peer memory
+  if( member? last consumat_strategy ["repetition" "deliberation"] )[ set memory_ranking ["own" "peers" "ext_peers"] ]
+  if( member? last consumat_strategy ["imitation"] )[ set memory_ranking ["peers" "own" "ext_peers"] ]
+  if( member? last consumat_strategy ["inquiring"] )[ set memory_ranking ["peers" "ext_peers" "own"] ]
+
+  ; get all remaining metier options in short
+  let options_short map[ a -> first a ] options
+  let remaining_options options
+
+  ; while there are still options to predict a fishing outcome for,
+  ; keep predicting using different memories (own, peer, or extended peers) in the determined order
+  while[ length remaining_options > 0 and length memory_ranking > 0 ][
+
+    ; determine wanted memory and deleted first option
+    let w_memory first memory_ranking
+    set memory_ranking but-first memory_ranking
+
+    ; Depending on which memory is used, get corresponding vessels
+    if( w_memory = "own" )[ set w_ves turtle-set self ]
+    if( w_memory = "peers" )[ set w_ves curr_peers ]
+    if( w_memory = "ext_peers" )[ set w_ves curr_ext_peers ]
+
+    ; only contine if there are vessels (if an agent has no peers, this will be empty)
+    if( count w_ves > 0 )[
+
+      ; get all options from the chosen vessel groups' memory
+      set available_options []
+      ask w_ves [ set available_options fput list_FishGro available_options ]
+      set available_options remove-duplicates first available_options
+
+      ; check which options can be used
+      if ( is-list? available_options = false )[ set available_options (list available_options) ]
+      set w_pos map [ i -> member? i available_options ] (map[ a -> first a ] remaining_options)
+
+      ; update available options to those that can be predicted by the chosen memory and remaining options to those which cannot
+      set available_options map [ i -> item i remaining_options ] (all.position w_pos true )
+      set remaining_options map [ i -> item i remaining_options ] (all.position w_pos false )
+
+      ; get predictions based on chosen memory
+      if( w_memory = "own" )[
+        set predictions map [ a -> predict.fishing.outcome (first a) (item 1 a) false w_memory ] available_options
+      ]
+      if( w_memory = "peers" )[
+        set predictions map [ a -> predict.fishing.outcome (first a) (item 1 a) perceiving_error w_memory ] available_options
+      ]
+      if( w_memory = "ext_peers" )[
+        set predictions map [ a -> predict.fishing.outcome (first a) (item 1 a) (perceiving_error * 2) w_memory ] available_options
+      ]
+
+      ; if some options couldnt be predicted (because of spatial restrictions), then add these again to the pool of options to be checked
+      ; the reason is that some spatial restrictions only forbid fishing for certain vessels  (e.g. plaice box for vessels with engine power > 221kw).
+      if(  member? "no suitable memory" predictions )[
+        set temp map [ a -> member? "no suitable memory" a ] predictions
+        set w_pos all.position temp true
+        set remaining_options sentence remaining_options map [ a -> item a available_options ] w_pos
+        set w_pos all.position temp false
+        set predictions map [ a -> item a predictions ] w_pos
+        set available_options map [ a -> item a available_options ] w_pos
+      ]
+
+      ; add predicted profit, consumat variables center patch, and port to perceived options
+      (foreach available_options predictions [ [ a b ] ->
+
+        ; get what species should be checked against quotas
+        ; These are the main species (individual quotas),
+        ; as well as those more than 10% of the overall catch (with Nephrops 5%) (bycatch quotas)
+        let temp_catches item 4 b
+        let summed_catch sum temp_catches
+        let rel_catches map[ c -> ifelse-value( summed_catch = 0 )[ 0 ][ c / summed_catch ] ] temp_catches
+        let quota_spec map [ c -> c > 0.1 ] rel_catches; keep only species that make up more than 10% of the catch
+        set quota_spec map [ c -> item c species_order ] (all.position quota_spec true)
+        let met_spec first a
+        set met_spec substring met_spec ( position "-" met_spec + 2 ) (length met_spec) ; add targeted species (from metier/FishGro name)
+        ifelse( member? "&" met_spec )
+        [ set met_spec (list substring met_spec 0 ( position "&" met_spec ) substring met_spec ( position "&" met_spec + 1) length met_spec) ]
+        [ set met_spec (list met_spec) ]
+        set quota_spec sentence met_spec quota_spec
+        set w_pos position "NEP" species_order ; add Nephrops if catches were more than 5%
+        if( not member? "NEP" quota_spec and (item w_pos rel_catches) > 0.05 )[ set quota_spec lput "NEP" quota_spec ]
+        set quota_spec remove-duplicates quota_spec
+        set b replace-item 4 b quota_spec
+
+        set w_pos (position first a options_short)
+        set options replace-item w_pos options (sentence item w_pos options b)
+      ])
+
+    ] ; end no peers or extended peers
+  ] ; end while loop for predictions
+
+  ;; KEEP OPTIONS WITHOUT MEMORY MATCH
+  ; if there are still remaining options that could not be predicted either by the agent's own their peer memory,
+  ; enter vessel's current consumat variables (i.e. no change), the closest patch from the fishing ground, and a the species from metier name
+  set w_pos map [ a -> length a = 3 ] options
+  set w_pos all.position w_pos true
+  let new_overall_sat last overall_sat * 1.05
+  if( new_overall_sat > 1 )[ set new_overall_sat 1 ]
+  let new_overall_unc last overall_unc * 1.05
+  if( new_overall_unc > 1 )[ set new_overall_unc 1 ]
+  let new_profit_day (mean list_pred_profit_day) + abs ((mean list_pred_profit_day) * .2)
+  if( length w_pos > 0 )[
+    foreach w_pos [ a ->
+      set temp item a options
+      let temp_spec first temp
+      set temp_spec substring temp_spec ( position "-" temp_spec + 2 ) (length temp_spec)
+      ifelse( member? "&" temp_spec )
+      [ set temp_spec (list substring temp_spec 0 ( position "&" temp_spec ) substring temp_spec ( position "&" temp_spec + 1) length temp_spec) ]
+      [ set temp_spec (list temp_spec) ]
+      let port_patch current_port
+      set port_patch ports with [ port_name = port_patch ]
+      ask port_patch [ set port_patch patch-here ]
+      
+      ; get metier fishing ground (in case its 'PUL' or 'TBB' get the combined fishing ground 'TBBPUL')
+      let FishGro_spatial_name item 0 temp 
+      if( member? "TBB" FishGro_spatial_name or member? "PUL" FishGro_spatial_name)[ 
+        set FishGro_spatial_name (word "TBBPUL" substring FishGro_spatial_name 3 length FishGro_spatial_name) ]
+      
+      set options replace-item a options (sentence temp
+        new_profit_day
+        new_overall_sat
+        new_overall_unc
+        patch-set min-one-of (patches with [ FishGro = FishGro_spatial_name ]) [distance port_patch]
+        (list temp_spec)
+        current_port
+      )
+    ]
+  ]
+
+  ; get predictions for the "do nothing" option
+  let do_nothing predict.fishing.outcome "do nothing" 0 false "own"
+  set do_nothing sentence ["do nothing" 0 "dummy"] do_nothing
+  set options sentence options (list do_nothing)
+
+  ; output
+  report( options )
+
+end
+
+;;; calculate gains of consumat variables for each option and rank them ;;;
+; sort out those that lead to worse consumat variables
+
+to-report rank.options [ options ]
+
+  ;;; calcualate changes in consumat variables and add to perceived changes
+  set options map [ a -> sentence a precision ((item 4 a - last overall_sat) + (1 / 3) * (last overall_unc - item 5 a)) 4 ] options
+
+  ;; If savings are above the savings threshold (negative value of the target savings),
+  ;; than choose options according to the highest consumat gains (sum of gain of satisfaction and absolute loss of uncertainty).
+  ;; If savings below the savings threshold, choose the option with the highest economic reward
+  ifelse( savings > (target_savings * -0.5) )[
+    
+    ; rank options according to comsumat gains
+    ; if there are groups of options with the same chance, rank them according to their economic outcome starting with the most profitable
+    ; if there are still equal values, order randomly
+    let vars map [ a -> last a ] options
+    let uni_var remove-duplicates vars
+    let freq_var map [ a -> frequency a vars ] uni_var
+    
+    ifelse( length (filter [ i -> i > 1 ] freq_var) > 0 )[
+      set uni_var sort-by [ [ b c ] -> b > c ] uni_var
+      let out []
+      foreach uni_var [ a ->
+        set temp filter [ i -> last i = a ] options
+        set temp shuffle temp
+        set temp sort-by [ [ b c ] -> item 3 b > item 3 c ] temp
+        set out lput temp out
+      ]
+      set options reduce sentence out
+    ][
+      set options sort-by [ [ a b ] -> last a > last b ] options
+    ]; end no equal values
+    
+    ; if the first option is "do nothing" insert stop reason in target_FishGro.
+    ; Otherwise remove the do nothing option from the pool of options
+    ifelse( first first options = "do nothing" )[ 
+      set target_FishGro "STOP: do nothing" 
+    ][
+      set options filter [ i -> first i != "do nothing" ] options 
+    ]
+    
+  ]; savings above 0 end
+  [
+    
+    ; remove options with negative profits except for the do nothing option
+    let temp_do_nothing filter [ a -> member? first a "do nothing" ] options
+    set options filter [ a -> item 3 a >= 0 ] options
+    set options sentence options temp_do_nothing
+    
+    ; sort by first by consumat gains and then by profits,
+    ; so that if there are 2 options with the same economic reward,
+    ; the option with the higher consumat gain is chosen
+    set options sort-by [ [ a b ] -> last a > last b ] options
+    set options sort-by [ [ b c ] -> item 3 b > item 3 c ] options
+
+    ; if the best option is "do nothing", inster stop reason
+    ifelse( first first options = "do nothing" )[
+      set target_FishGro "STOP: do nothing"
+    ][
+
+      ; remove the do nothing option from the pool of options
+      set options filter [ i -> first i != "do nothing" ] options
+
+    ]; end no options left
+  ]; savings above threshold end
+
+  ; output
+  report( options )
+
+end
+
+;;; filter out fishing options that exceed quotas or bycatch thresholds of species for which fishers do not have licenses ;;;
+
+to-report check.bycatch.quota [ options ]
+
+  ;; sort out trips that have high amounts of bycatches of species for which they do not have any license
+  set temp reduce sentence map [a -> item 7 a ] options
+  if( member? "NEP" temp and not member? "NEP" fish_licence )[ set options filter [ a -> not member? "NEP" (item 7 a) ] options  ]
+  if( member? "SOL" temp and not member? "SOL" fish_licence )[ set options filter [ a -> not member? "SOL" (item 7 a) ] options  ]
+  if( member? "COD" temp and not member? "COD" fish_licence )[ set options filter [ a -> not member? "COD" (item 7 a) ] options  ]
+
+  ; if there are still options check for available quotas
+  ifelse( length options = 0 )[
+    set target_FishGro "STOP: bycatch of quota species"
+  ][
+    set temp reduce sentence map [a -> item 7 a ] options
+
+    ; filter for available global quotas
+    if( quota_ple - global_ple <= 0 )[ set options filter [ a -> not member? "PLE" first (item 7 a) ] options ]
+    if( quota_sol - global_sol <= 0 )[ set options filter [ a -> not member? "SOl" first (item 7 a) ] options ]
+    if( quota_nep - global_nep <= 0 )[ set options filter [ a -> not member? "NEP" first (item 7 a) ] options ]
+    if( quota_cod - global_cod <= 0 )[ set options filter [ a -> not member? "COD" first (item 7 a) ] options ]
+
+    ; filter for available individual quotas
+    if( quota_quarter_sol <= 0 )[ set options filter [ a -> not member? "SOl" first (item 7 a) ] options ]
+    if( quota_year_nep <= 0 )[ set options filter [ a -> not member? "NEP" first (item 7 a) ] options ]
+    if( quota_year_cod <= 0 )[ set options filter [ a -> not member? "COD" first (item 7 a) ] options ]
+    if( quota_year_ple <= 0 )[ set options filter [ a -> not member? "PLE" first (item 7 a) ] options ]
+   
+
+    if( length options = 0 )[ set target_FishGro "STOP: quota exhausted" ]
+  ]
+
+  ; output
+  report( options )
+
+
+end
+
+;;; fishers predict profits and consumat variables based on either their own or peers' memory. However, they use their own perceived bottomT to find the closest trip used to estimate catches.
+; provide a number for obscure if you want to add a error to the to the predictions. Put false if no error is wanted.
+; provide "own", "peers" or "ext_peers" for memory
+
+to-report predict.fishing.outcome [ w_FishGro w_trip_days obscure memory ]
+
+  ; needs to be called in vessel loop
+
+  ; if the outcome for "do nothing" should be predicted, no complicated predicitons for catches and revenues are needed
+  ifelse( w_FishGro = "do nothing" )[
+
+    let pred_profit_day ((monthly_expanses / 30) + daily_fixed_costs) * -1
+    let pred_target_patch patch-set []
+    let w_catches []
+    let target_port current_port
+    ; let w_profits mean but-first lput 0 daily_profit
+    let w_savings savings - (monthly_expanses / 30) - daily_fixed_costs
+    ; let list_prime_spec sentence list_primary_spec_helper "do nothing"
+    ; let list_g sentence list_gears "do nothing"
+    ; let list_prime_spec list_primary_spec_helper
+    let list_prime_spec sentence list_primary_spec last list_primary_spec
+    let list_g sentence list_gears last list_gears 
+    let list_prof_day sentence list_profit_day pred_profit_day
+    let peer_profits lput (last list_meanProfit_peers) list_meanProfit_peers
+    let peer_gears lput (last list_gears_peers) list_gears_peers
+    let peer_prime_spec lput (last list_primeSpec_peers) list_primeSpec_peers
+
+    ; predict changes in satisfactions and uncertainties
+    let pred_consumat (consumat.var.update false ["exist_sat" "pers_sat" "soc_sat" "soc_unc" ] w_savings list_prime_spec list_g "own" "own" "own" "own" list_prof_day peer_profits peer_gears peer_prime_spec)
+
+    ; output
+    report (sentence pred_profit_day pred_consumat pred_target_patch (list w_catches) target_port)
+
+  ][
+
+    ; set up dummy lists
+    let w_Fgro []
+    let w_list_trip_days []
+    let w_list_steam_time [] 
+    let w_list_fish_time []
+    let w_primary_spec []
+    let w_first_day []
+    let w_perc_bT_trip []
+    let w_catch []
+    let w_EUR []
+    let w_fuel []
+    let w_center_ID []
+    let w_center_agent []
+    let w_land_port []
+    let w_engine_power []
+    let w_engine_power_steps []
+
+
+    ; if own gear and Fishgro should be chosen get those
+    if( w_FishGro = "own" )[ set w_FishGro target_FishGro ]
+    let w_gear substring w_FishGro 0 (position "-" w_FishGro - 1)
+    let own_engine_kw engine_kw_step
+
+    ;;; get necessary memory lists ...
+
+    ; ... from own memory
+    if( memory = "own" )[
+
+      ; get lists from state variables
+      set w_Fgro list_Fishgro
+      set w_list_trip_days list_trip_days
+      set w_primary_spec list_primary_spec
+      set w_first_day list_first_day
+      set w_perc_bT_trip list_perc_bt_trip
+      set w_catch list_catch
+      set w_EUR list_eur
+      set w_fuel list_fuel
+      set w_center_ID list_center_ID
+      set w_center_agent list_center_agent
+      set w_land_port list_landing_port
+    ]
+
+    ; ... from peer memory
+    if( member? memory ["peers" "ext_peers"] )[
+
+      let ves "dummy"
+      if ( memory = "peers") [ set ves curr_peers ]
+      if ( memory = "ext_peers") [ set ves curr_ext_peers ]
+
+      ask ves [
+
+        ; collect information from peers in lists
+        set w_Fgro sentence w_Fgro list_FishGro
+        set w_list_trip_days sentence w_list_trip_days list_trip_days
+        set w_list_steam_time sentence w_list_steam_time list_steam_time
+        set w_list_fish_time sentence w_list_fish_time list_fish_time
+        set w_primary_spec sentence w_primary_spec list_primary_spec
+        set w_first_day sentence w_first_day list_first_day
+        set w_perc_bT_trip sentence w_perc_bT_trip list_perc_bT_trip
+        set w_center_ID sentence w_center_ID list_center_ID
+        set w_center_agent sentence w_center_agent list_center_agent
+        set w_catch sentence w_catch list_catch
+        set w_EUR sentence w_EUR list_eur
+        set w_fuel sentence w_fuel list_fuel
+        set w_land_port sentence w_land_port list_landing_port
+        repeat length list_landing_port [ set w_engine_power_steps sentence w_engine_power_steps engine_kw_step ]
+
+      ]
+    ] ; end memory peers or ext peers
+
+    ;;; restrict to trips with same Fishing ground
+    let w_pos all.position w_Fgro w_FishGro
+
+    ; restrict memories to options that comply with spatial restrictions
+    ; remove plaice box patches if engine_kw is larger than 221 and vessel wants to use beam or pulse trawl
+    if( (w_gear = "TBB" or  w_gear = "PUL") and engine_kw > 221 )[
+      let temp_patches map [ i -> item i w_center_agent ] w_pos
+      set temp_patches map [ a -> not member? "plaice_box" [spat_restr] of a ] temp_patches
+      let w_pos2 all.position temp_patches true
+      set w_pos map [ a -> item a w_pos ] w_pos2
+    ]
+
+    ; only continue if there are still possible options to compare with
+    ifelse( length w_pos = 0 )[
+      ; output that will make sure the option is returned to the pool of options to make predictions
+      report "no suitable memory"
+    ]
+    [
+
+      ; get relevant bottomTs
+      let rel_bT map [ i -> item i w_perc_bT_trip ] w_pos
+
+      ; look for most similar bottom temp and get its position
+      let pos_bT map [ i -> abs(i - curr_bottomT) ] rel_bT
+      set pos_bT position (precision min pos_bT 4) (map [ i -> precision i 4 ] pos_bT)
+      set w_pos item pos_bT w_pos 
+      
+      ; get catches, fuel, trip days, steaming time, fishing time, revenues, primary species, center patch, landing port, and engine power from most similiar trip
+      let match_catches item w_pos w_catch
+      let match_fuel item w_pos w_fuel
+      let match_trip_days item w_pos w_list_trip_days
+      let match_EUR item w_pos w_EUR
+      let match_primary_spec item w_pos w_primary_spec
+      let match_center_patch patch-set (item w_pos w_center_agent)
+      let match_target_port item w_pos w_land_port
+      
+      ; if information came from peer memory, standardize by engine_kw and calculate new fuel costs
+      ; also obcsure values
+      if( member? memory ["peers" "ext_peers"] )[
+        
+        let match_engine_power item w_pos w_engine_power_steps
+        let diff_kw_steps ( engine_kw_step - match_engine_power )
+        if( diff_kw_steps != 0 )[ 
+          set match_catches map [ a -> a + (a * (CPUE_coefficient * diff_kw_steps)) ] match_catches
+          set match_EUR map [ a -> a + (a * (CPUE_coefficient * diff_kw_steps)) ] match_EUR  
+        ]
+        
+        ; fuel costs
+        ; if gear is PUL than the fuel consumption is half as much (Turenhout et al. 2016)
+        ; if gear is FPO is set to 0.7 (assumption) (Davie et al. 2015)
+        let match_steam_time item w_pos w_list_steam_time
+        let match_fish_time item w_pos w_list_fish_time
+        set match_fuel (match_steam_time * (3.976 + 0.236 * engine_kw) * 0.8)
+        ifelse( w_gear = "PUL" or w_gear = "FPO" )
+        [
+          if( w_gear = "PUL" ) [ set match_fuel precision ( match_fuel + (match_fish_time * (3.976 + 0.236 * engine_kw) ) * 0.5 ) 2 ]
+          if( w_gear = "FPO" ) [ set match_fuel precision ( match_fuel + (match_fish_time * (3.976 + 0.236 * engine_kw) ) * 0.7 ) 2 ]
+        ]
+        [ set match_fuel precision ( match_fuel + (match_fish_time * (3.976 + 0.236 * engine_kw) ) ) 2 ]
+        
+        ; obscure catch, kg, and fuel if wanted
+        if( obscure != false )[
+          set match_catches map [ a -> a + (random-float a * (obscure * 2) - a * obscure ) ] match_catches
+          set match_EUR map [ a -> a + (random-float a * (obscure * 2) - a * obscure ) ] match_EUR
+          set match_fuel match_fuel + (random-float match_fuel * (obscure * 2) - match_fuel * obscure )
+          set match_trip_days match_trip_days + (random-float match_trip_days * (obscure * 2) - match_trip_days * obscure )
+        ]
+        
+      ]
+
+      ;;; predict income per trip day
+
+      ; predict income per trip day
+      let income []
+      set income lput (item (position "SOL" species_order) match_catches * perc_price_sol) income
+      set income lput (item (position "PLE" species_order) match_catches * perc_price_ple) income
+      set income lput (item (position "TUR" species_order) match_catches * perc_price_tur) income
+      set income lput (item (position "BLL" species_order) match_catches * perc_price_bll) income
+      set income lput (item (position "NEP" species_order) match_catches * perc_price_nep) income
+      set income lput (item (position "CSH" species_order) match_catches * perc_price_csh) income
+      set income lput (item (position "COD" species_order) match_catches * perc_price_cod) income
+      set income lput (item (position "Other" species_order) match_EUR ) income  ; this is what the fisher earned by others. Cannot be predicted because there is currently no price for others. Therefore just take the EUR from the fishing trip.
+      set income sum income
+      
+      ;;; predict costs         
+   
+      let match_fuel_costs match_fuel * perc_price_fuel  ; calculate fuel costs (for entire trip)
+      let other_costs item 1 (id.STECF VE_REF w_FishGro)       ; other costs (per trip day)
+
+      ; profit per fishing trip day
+      let pred_profit_day (income - match_fuel_costs) / match_trip_days
+      set pred_profit_day pred_profit_day - other_costs
+
+      ;;; predict satisfaction and uncertainty
+
+      ; create lists necessary to calc consumat variables and add values of the closest trip to the end
+      let list_prof_day sentence list_profit_day pred_profit_day
+      ; let list_prime_spec list_primary_spec_helper
+      let list_prime_spec list_primary_spec
+      repeat ceiling w_trip_days [ set list_prime_spec lput match_primary_spec list_prime_spec ]
+      let list_g list_gears
+      repeat ceiling w_trip_days [ set list_g lput w_gear list_g ]
+      ; let w_profits sublist daily_profit ceiling w_trip_days 30
+      ; repeat ceiling w_trip_days [ set w_profits lput pred_profit_day w_profits ]
+      ; set w_profits mean w_profits
+      let w_savings savings + (w_trip_days * (pred_profit_day - (monthly_expanses / 30) - daily_fixed_costs))
+      let peer_profits lput (last list_meanProfit_peers) list_meanProfit_peers
+      let peer_gears list_gears_peers
+      repeat ceiling w_trip_days [ set peer_gears lput (last list_gears_peers) peer_gears ]
+      let peer_prime_spec list_primeSpec_peers
+      repeat ceiling w_trip_days [ set peer_prime_spec lput (last list_primeSpec_peers) peer_prime_spec ]
+
+      ; predict changes in satisfactions and uncertainties
+      let pred_consumat (consumat.var.update false ["exist_sat" "pers_sat" "soc_sat" "soc_unc" ] w_savings list_prime_spec list_g "own" "own" "own" "own" list_prof_day peer_profits peer_gears peer_prime_spec)
+
+      ; output
+      report (sentence pred_profit_day pred_consumat match_center_patch (list match_catches) match_target_port)
+
+    ] ; empty w_pos end
+  ]; do nothing end
+
+end
+

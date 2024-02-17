@@ -1,0 +1,143 @@
+;;; export model outcome ;;;
+
+to export
+
+  ;;; gather and export all variables per trip
+
+  let spec species_order
+  let num_spec length spec
+  let out_ves []
+  let out_FishGro []
+  let out_first_day []
+  let out_last_day []
+  let out_trip_day []
+  let out_spec []
+  let out_catch []
+  let out_eur []
+  let out_fuel []
+  let out_profit []
+  let out_profit_day []
+  let out_pred_profit_day []
+  let out_primary_spec []
+  let out_list_matched_ID []
+  let out_list_num_searches []
+  let out_list_num_patches []
+  let out_list_steam_time []
+  let out_list_fish_time []
+  let out_list_center_ID []
+  let out_list_uncertainty []
+  let out_list_trip_patch_ids []
+  let out_list_mean_depl_coeff []
+  let out_list_depreciations []
+  let out_list_landing_port []
+
+  ask vessels [
+
+    let num_trips length list_first_day
+    repeat (num_spec * num_trips) [ set out_ves sentence VE_REF out_ves ]
+    repeat num_spec [ set out_first_day sentence list_first_day out_first_day ]
+    repeat num_spec [ set out_last_day sentence list_last_day out_last_day ]
+    repeat num_spec [ set out_FishGro sentence list_FishGro out_FishGro ]
+    repeat num_spec [ set out_fuel sentence list_fuel out_fuel ]
+    repeat num_spec [ set out_profit sentence list_profit out_profit ]
+    repeat num_spec [ set out_profit_day sentence list_profit_day out_profit_day ]
+    repeat num_spec [ set out_trip_day sentence list_trip_days out_trip_day ]
+    repeat num_spec [ set out_primary_spec sentence list_primary_spec out_primary_spec ]
+    repeat num_spec [ set out_pred_profit_day sentence list_pred_profit_day out_pred_profit_day ]
+    repeat num_spec [ set out_list_center_ID sentence list_center_ID out_list_center_ID ]
+    repeat num_spec [ set out_list_uncertainty sentence list_uncertainty out_list_uncertainty ]
+    repeat num_spec [ set out_list_depreciations sentence list_depreciations out_list_depreciations ]
+    repeat num_spec [ set out_list_landing_port sentence list_landing_port out_list_landing_port ]
+
+    repeat num_spec [ set out_list_matched_ID sentence list_matched_ID out_list_matched_ID ]
+    repeat num_spec [ set out_list_num_searches sentence list_num_searches out_list_num_searches ]
+    repeat num_spec [ set out_list_num_patches sentence list_num_patches out_list_num_patches ]
+    repeat num_spec [ set out_list_steam_time sentence list_steam_time out_list_steam_time ]
+    repeat num_spec [ set out_list_fish_time sentence list_fish_time out_list_fish_time ]
+    repeat num_spec [ set out_list_trip_patch_ids sentence list_trip_patch_ids out_list_trip_patch_ids ]
+    repeat num_spec [ set out_list_mean_depl_coeff sentence list_mean_depl_coeff out_list_mean_depl_coeff ]
+
+    foreach spec [ [a] ->
+      repeat num_trips [ set out_spec sentence a out_spec ]
+    ]
+    foreach (n-values (length spec) [i -> i]) [ [a] ->
+      set out_catch sentence (sentence (map [ i -> item a i ] list_catch) ) out_catch
+      set out_eur sentence (sentence (map [ i -> item a i ] list_eur) ) out_eur
+    ]
+  ]
+
+  let out_trip (map [ [ a b c d f g h i j k l m n o p q r s t u v w x y ] -> (list a b c d f g h i j k l m n o p q r s t u v w x y) ]
+    out_ves out_first_day out_last_day out_trip_day out_FishGro out_spec out_catch out_eur out_fuel out_profit out_profit_day out_pred_profit_day out_primary_spec out_list_matched_ID
+    out_list_num_searches out_list_num_patches out_list_steam_time out_list_fish_time out_list_center_ID out_list_uncertainty out_list_trip_patch_ids out_list_mean_depl_coeff out_list_depreciations
+    out_list_landing_port)
+  let colnames (list "VE_REF" "first_day"  "last_day" "trip_days" "FishGro" "species" "kg" "eur" "fuel_l" "profit" "profit_Pday" "pred_profit_day" "primary_spec" "matched_FT_REF_uni"
+    "num_searches" "num_patches" "steam_time" "fishing_time" "center_ID" "uncertainty" "trip_patch_ids" "mean_depl_coeff" "depreciations" "landing_port")
+  set out_trip fput colnames out_trip
+
+  ;;; gather daily variables (excluding initial memory)
+
+  let rel_days but-first day_ch
+  let num_days length(rel_days)
+  set out_ves []
+  let out_dates []
+  let out_stat_sat []
+  let out_stat_unc []
+  let out_overall_sat []
+  let out_overall_unc []
+  let out_exist_sat []
+  let out_pers_sat []
+  let out_pers_sat_spec []
+  let out_pers_sat_gear []
+  let out_soc_sat []
+  let out_exist_unc []
+  let out_soc_unc []
+  let out_soc_unc_spec []
+  let out_soc_unc_gear []
+  let out_perc_bottomT []
+  let out_list_decision []
+  let out_consumat_strategy []
+  let out_list_savings []
+
+  ask vessels [
+    repeat num_days [ set out_ves sentence VE_REF out_ves ]
+    set out_dates sentence rel_days out_dates
+    set out_stat_sat sentence status_sat out_stat_sat
+    set out_stat_unc sentence status_unc out_stat_unc
+    set out_overall_sat sentence overall_sat out_overall_sat
+    set out_overall_unc sentence overall_unc out_overall_unc
+    set out_exist_sat sentence existence_sat out_exist_sat
+    set out_pers_sat sentence personal_sat out_pers_sat
+    set out_pers_sat_spec sentence personal_sat_spec out_pers_sat_spec
+    set out_pers_sat_gear sentence personal_sat_gear out_pers_sat_gear
+    set out_soc_sat sentence social_sat out_soc_sat
+    set out_exist_unc sentence existence_unc out_exist_unc
+    set out_soc_unc sentence social_unc out_soc_unc
+    set out_soc_unc_spec sentence social_unc_spec out_soc_unc_spec
+    set out_soc_unc_gear sentence social_unc_gear out_soc_unc_gear
+    set out_perc_bottomT sentence list_perc_bottomT out_perc_bottomT
+    set out_list_decision sentence list_decision out_list_decision
+    set out_consumat_strategy sentence consumat_strategy out_consumat_strategy
+    set out_list_savings sentence list_savings out_list_savings
+  ]
+
+  let out_day (map [ [ a b c d f g h j k l m n o p q r s t u ] -> (list a b c d f g h j k l m n o p q r s t u) ]
+    out_ves out_dates out_stat_sat out_stat_unc out_overall_sat out_overall_unc out_exist_sat out_pers_sat out_pers_sat_spec
+    out_pers_sat_gear out_soc_sat out_exist_unc out_soc_unc out_soc_unc_spec out_soc_unc_gear out_perc_bottomT out_list_decision out_consumat_strategy out_list_savings )
+  set colnames (list "VE_REF" "date" "status_sat"  "status_unc" "overall_sat" "overall_unc" "existence_sat" "personal_sat" "personal_sat_spec"
+    "personal_sat_gear" "social_sat" "existence_unc" "social_unc" "social_unc_spec" "social_unc_gear" "perceived_bottomT" "decision" "consumat_strategy" "savings")
+  set out_day fput colnames out_day
+
+  ;;;; save file
+
+  ;; assemble file name
+  let file_name (word date-and-time)
+  set file_name replace-item 2 file_name "-"
+  set file_name replace-item 5 file_name "-"
+  set file_name (word "Scenario_" Scenario? "_" file_name)
+
+  csv:to-file (word path_output_folder "ByTrip_" file_name ".csv") out_trip
+  csv:to-file (word path_output_folder "ByDay_" file_name ".csv") out_day
+
+  show (word "EXPORTED: " file_name)
+
+end
